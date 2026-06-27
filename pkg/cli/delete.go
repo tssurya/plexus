@@ -1,20 +1,40 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 )
 
 func newDeleteCommand() *cobra.Command {
+	var yes bool
+
 	cmd := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete an AdministrativeNetworkDomain and all its subnets",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			if !yes {
+				fmt.Fprintf(cmd.OutOrStdout(), "This will delete AND %q and all its associated resources. Continue? [y/N] ", name)
+				reader := bufio.NewReader(cmd.InOrStdin())
+				answer, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("reading confirmation: %w", err)
+				}
+				if strings.TrimSpace(strings.ToLower(answer)) != "y" {
+					fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+					return nil
+				}
+			}
+
 			c, err := getClient()
 			if err != nil {
 				return err
@@ -22,17 +42,20 @@ func newDeleteCommand() *cobra.Command {
 
 			and := &v1beta1.AdministrativeNetworkDomain{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: args[0],
+					Name: name,
 				},
 			}
 
 			if err := c.Delete(context.TODO(), and); err != nil {
-				return fmt.Errorf("deleting AND %q: %w", args[0], err)
+				return fmt.Errorf("deleting AND %q: %w", name, err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "administrativenetworkdomain/%s deleted\n", args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "administrativenetworkdomain/%s deleted\n", name)
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
+
 	return cmd
 }

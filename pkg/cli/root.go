@@ -4,6 +4,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	kubeconfig string
+	kubecontext string
+)
+
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "plexus",
@@ -15,12 +20,15 @@ AdministrativeNetworkDomains (ANDs) and their subnets.
 This command can be used standalone or as a kubectl plugin (kubectl plexus).`,
 	}
 
+	cmd.PersistentFlags().StringVar(&kubeconfig, "kubeconfig", "", "Path to the kubeconfig file")
+	cmd.PersistentFlags().StringVar(&kubecontext, "context", "", "The name of the kubeconfig context to use")
+
 	cmd.AddCommand(newCreateCommand())
 	cmd.AddCommand(newDeleteCommand())
-	cmd.AddCommand(newGetCommand())
 	cmd.AddCommand(newDescribeCommand())
 	cmd.AddCommand(newAddSubnetCommand())
-	cmd.AddCommand(newRemoveSubnetCommand())
+	cmd.AddCommand(newDeleteSubnetCommand())
+	cmd.AddCommand(newVersionCommand())
 
 	return cmd
 }

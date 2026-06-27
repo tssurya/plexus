@@ -59,6 +59,11 @@ func (r *ANDReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		}
 	}
 
+	// TODO: set Ready=False with Reason=NoSubnets when len(and.Spec.Subnets) == 0.
+	// An AND with no subnets is valid; this supports workflows where the
+	// domain is created by one team (e.g. platform) and subnets are added
+	// later by another (e.g. networking).
+
 	// Reconcile via the backend.
 	result, err := r.Backend.Reconcile(ctx, and)
 	if err != nil {

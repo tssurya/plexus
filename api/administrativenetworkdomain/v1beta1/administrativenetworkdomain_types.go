@@ -16,6 +16,8 @@ import (
 // +kubebuilder:resource:path=administrativenetworkdomains,scope=Cluster,shortName=and,singular=administrativenetworkdomain
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Whether all subnets are reconciled"
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type AdministrativeNetworkDomain struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -36,10 +38,13 @@ type AdministrativeNetworkDomainSpec struct {
 	// ClusterUserDefinedNetwork. Subnets within the same AdministrativeNetworkDomain can
 	// have different topologies and transports.
 	//
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinItems=1
-	// +required
-	Subnets []Subnet `json:"subnets"`
+	// An AND with no subnets is valid; this supports workflows where the
+	// domain is created by one team (e.g. platform) and subnets are added
+	// later by another (e.g. networking). The controller will not provision
+	// any network resources until at least one subnet is added.
+	//
+	// +optional
+	Subnets []Subnet `json:"subnets,omitempty"`
 }
 
 // SubnetType defines the external connectivity class of an AdministrativeNetworkDomain subnet.

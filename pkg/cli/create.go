@@ -11,10 +11,16 @@ import (
 )
 
 func newCreateCommand() *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "create <name>",
-		Short: "Create an empty AdministrativeNetworkDomain",
-		Args:  cobra.ExactArgs(1),
+		Short: "Create an AdministrativeNetworkDomain",
+		Long: `Create an empty AdministrativeNetworkDomain.
+Use 'plexus add-subnet' to add subnets after creation.
+
+Examples:
+  plexus create production
+  plexus create staging`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := getClient()
 			if err != nil {
@@ -24,9 +30,6 @@ func newCreateCommand() *cobra.Command {
 			and := &v1beta1.AdministrativeNetworkDomain{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: args[0],
-				},
-				Spec: v1beta1.AdministrativeNetworkDomainSpec{
-					Subnets: []v1beta1.Subnet{},
 				},
 			}
 
@@ -38,5 +41,4 @@ func newCreateCommand() *cobra.Command {
 			return nil
 		},
 	}
-	return cmd
 }

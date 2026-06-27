@@ -13,16 +13,31 @@ import (
 )
 
 func newAddSubnetCommand() *cobra.Command {
-	var cidr string
+	var cidrs []string
 	var subnetType string
 
 	cmd := &cobra.Command{
 		Use:   "add-subnet <network-domain> <subnet-name>",
 		Short: "Add a subnet to an AdministrativeNetworkDomain",
-		Args:  cobra.ExactArgs(2),
+		Long: `Add a new subnet to an existing AdministrativeNetworkDomain.
+
+Examples:
+  plexus add-subnet production web --cidr 10.0.1.0/24 --type Public
+  plexus add-subnet production backend --cidr 10.0.2.0/24
+  plexus add-subnet production dual --cidr 10.0.3.0/24 --cidr fd00::3/64 --type Private`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ndName := args[0]
 			subnetName := args[1]
+
+			if err := validateCIDRs(cidrs); err != nil {
+				return err
+			}
+
+			st, err := validateSubnetType(subnetType)
+			if err != nil {
+				return err
+			}
 
 			c, err := getClient()
 			if err != nil {
@@ -40,13 +55,11 @@ func newAddSubnetCommand() *cobra.Command {
 				}
 			}
 
-			newSubnet := v1beta1.Subnet{
+			and.Spec.Subnets = append(and.Spec.Subnets, v1beta1.Subnet{
 				Name:  subnetName,
-				CIDRs: []string{cidr},
-				Type:  v1beta1.SubnetType(subnetType),
-			}
-
-			and.Spec.Subnets = append(and.Spec.Subnets, newSubnet)
+				CIDRs: cidrs,
+				Type:  st,
+			})
 
 			patchBytes, err := json.Marshal(map[string]interface{}{
 				"spec": map[string]interface{}{
@@ -66,7 +79,7 @@ func newAddSubnetCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&cidr, "cidr", "", "CIDR for the subnet (required)")
+	cmd.Flags().StringSliceVar(&cidrs, "cidr", nil, "CIDR for the subnet (required, repeatable for dual-stack)")
 	cmd.Flags().StringVar(&subnetType, "type", "Private", "Subnet type: Public, Private, Isolated, VPNOnly")
 	_ = cmd.MarkFlagRequired("cidr")
 

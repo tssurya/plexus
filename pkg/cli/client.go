@@ -5,9 +5,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 )
@@ -15,12 +15,23 @@ import (
 var cliScheme = runtime.NewScheme()
 
 func init() {
-	utilruntime.Must(clientgoscheme.AddToScheme(cliScheme))
+	utilruntime.Must(scheme.AddToScheme(cliScheme))
 	utilruntime.Must(v1beta1.AddToScheme(cliScheme))
 }
 
 func getClient() (client.Client, error) {
-	cfg, err := config.GetConfig()
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfig != "" {
+		loadingRules.ExplicitPath = kubeconfig
+	}
+
+	configOverrides := &clientcmd.ConfigOverrides{}
+	if kubecontext != "" {
+		configOverrides.CurrentContext = kubecontext
+	}
+
+	cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		loadingRules, configOverrides).ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("loading kubeconfig: %w", err)
 	}

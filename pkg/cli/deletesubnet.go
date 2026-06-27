@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/types"
@@ -12,14 +14,38 @@ import (
 	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 )
 
-func newRemoveSubnetCommand() *cobra.Command {
+func newDeleteSubnetCommand() *cobra.Command {
+	var yes bool
+
 	cmd := &cobra.Command{
-		Use:   "remove-subnet <network-domain> <subnet-name>",
-		Short: "Remove a subnet from an AdministrativeNetworkDomain",
-		Args:  cobra.ExactArgs(2),
+		Use:   "delete-subnet <network-domain> <subnet-name>",
+		Short: "Delete a subnet from an AdministrativeNetworkDomain",
+		Long: `Delete a subnet from an existing AdministrativeNetworkDomain.
+This will trigger the controller to clean up all backend resources
+associated with the subnet.
+
+Examples:
+  plexus delete-subnet production web
+  plexus delete-subnet production web --yes`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ndName := args[0]
 			subnetName := args[1]
+
+			if !yes {
+				fmt.Fprintf(cmd.OutOrStdout(),
+					"This will delete subnet %q from AND %q and remove its associated resources. Continue? [y/N] ",
+					subnetName, ndName)
+				reader := bufio.NewReader(cmd.InOrStdin())
+				answer, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("reading confirmation: %w", err)
+				}
+				if strings.TrimSpace(strings.ToLower(answer)) != "y" {
+					fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+					return nil
+				}
+			}
 
 			c, err := getClient()
 			if err != nil {
@@ -57,9 +83,12 @@ func newRemoveSubnetCommand() *cobra.Command {
 				return fmt.Errorf("patching AND %q: %w", ndName, err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "subnet/%s removed from administrativenetworkdomain/%s\n", subnetName, ndName)
+			fmt.Fprintf(cmd.OutOrStdout(), "subnet/%s deleted from administrativenetworkdomain/%s\n", subnetName, ndName)
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
+
 	return cmd
 }

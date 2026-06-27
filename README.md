@@ -12,25 +12,28 @@ is the reference backend.
 ## Quick Start
 
 ```bash
+# Build
+make build
+
+# Install the CLI (standalone)
+cp bin/plexus /usr/local/bin/
+# Or as a kubectl plugin
+cp bin/kubectl-plexus /usr/local/bin/
+
 # Install the CRD
-make manifests install
+kubectl apply -f config/crd/plexus.io_administrativenetworkdomains.yaml
 
-# Run the controller locally
-make run
-
-# Create an AND via CLI
-go run ./cmd/kubectl-plexus/ create production
-
-# Add subnets
-go run ./cmd/kubectl-plexus/ add-subnet production web --cidr 10.0.1.0/24 --type Public
-go run ./cmd/kubectl-plexus/ add-subnet production app --cidr 10.0.10.0/24 --type Private
-go run ./cmd/kubectl-plexus/ add-subnet production db  --cidr 10.0.20.0/24 --type Isolated
+# Create an AND and add subnets
+plexus create production
+plexus add-subnet production web --cidr 10.0.1.0/24 --type Public
+plexus add-subnet production app --cidr 10.0.10.0/24 --type Private
+plexus add-subnet production db  --cidr 10.0.20.0/24 --type Isolated
 
 # List ANDs
-go run ./cmd/kubectl-plexus/ get
+kubectl get and
 
 # Describe an AND
-go run ./cmd/kubectl-plexus/ describe production
+plexus describe production
 ```
 
 ## What It Does
@@ -52,6 +55,10 @@ make test        # Unit tests
 make lint        # Format + vet + golangci-lint
 make docker-build
 ```
+
+## Documentation
+
+- [CLI Reference](docs/cli.md) — full command reference for `plexus` / `kubectl plexus`
 
 ## Design
 
