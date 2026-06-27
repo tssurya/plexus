@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: plexus-controller
+  namespace: plexus-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: plexus-controller
+rules:
+  - apiGroups: ["plexus.io"]
+    resources: ["administrativenetworkdomains"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["plexus.io"]
+    resources: ["administrativenetworkdomains/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["plexus.io"]
+    resources: ["administrativenetworkdomains/finalizers"]
+    verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # UDN, CNC, RouteAdvertisements — to be added as backend expands
+  # - apiGroups: ["k8s.ovn.org"]
+  #   resources: ["userdefinednetworks", "clusternetworkconnects", "routeadvertisements"]
+  #   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: plexus-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: plexus-controller
+subjects:
+  - kind: ServiceAccount
+    name: plexus-controller
+    namespace: plexus-system

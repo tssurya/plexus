@@ -1,0 +1,44 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: plexus-controller
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - plexus.io
+  resources:
+  - administrativenetworkdomains
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - plexus.io
+  resources:
+  - administrativenetworkdomains/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - plexus.io
+  resources:
+  - administrativenetworkdomains/status
+  verbs:
+  - get
+  - patch
+  - update

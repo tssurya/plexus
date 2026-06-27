@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plexus-controller
+  namespace: plexus-system
+  labels:
+    app.kubernetes.io/name: plexus-controller
+    app.kubernetes.io/part-of: plexus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: plexus-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: plexus-controller
+    spec:
+      serviceAccountName: plexus-controller
+      containers:
+        - name: controller
+          image: plexus-controller:latest
+          args:
+            - --leader-elect
+          ports:
+            - containerPort: 8080
+              name: metrics
+            - containerPort: 8081
+              name: health
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: plexus-system
+  labels:
+    app.kubernetes.io/part-of: plexus

@@ -1,0 +1,63 @@
+# Plexus
+
+**Plexus** is a network orchestrator that provides VPC-like isolation on
+Kubernetes via the **AdministrativeNetworkDomain** (AND) CRD.
+
+It translates high-level network intent — subnets, routing, security groups,
+gateways — into backend-specific resources. [OVN-Kubernetes](https://github.com/ovn-kubernetes/ovn-kubernetes)
+is the reference backend.
+
+> **Status:** Early PoC. The API is `v1beta1` and subject to change.
+
+## Quick Start
+
+```bash
+# Install the CRD
+make manifests install
+
+# Run the controller locally
+make run
+
+# Create an AND via CLI
+go run ./cmd/kubectl-plexus/ create production
+
+# Add subnets
+go run ./cmd/kubectl-plexus/ add-subnet production web --cidr 10.0.1.0/24 --type Public
+go run ./cmd/kubectl-plexus/ add-subnet production app --cidr 10.0.10.0/24 --type Private
+go run ./cmd/kubectl-plexus/ add-subnet production db  --cidr 10.0.20.0/24 --type Isolated
+
+# List ANDs
+go run ./cmd/kubectl-plexus/ get
+
+# Describe an AND
+go run ./cmd/kubectl-plexus/ describe production
+```
+
+## What It Does
+
+When you create an AND with subnets, the Plexus controller (via the
+OVN-Kubernetes backend):
+
+1. Creates a **namespace** per subnet (`<and-name>-<subnet-name>`)
+2. Creates a **UDN** (L2 EVPN) in each namespace
+3. Creates **RouteAdvertisements** for Public subnets (BGP export)
+4. Sets up **intra-domain routing** between non-Isolated subnets
+5. Aggregates **status** from all subnets into the AND status
+
+## Build
+
+```bash
+make build       # → bin/plexus-controller, bin/kubectl-plexus
+make test        # Unit tests
+make lint        # Format + vet + golangci-lint
+make docker-build
+```
+
+## Design
+
+See [OKEP-6557](https://github.com/ovn-kubernetes/ovn-kubernetes/issues/6557)
+for the full design document.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

@@ -1,0 +1,269 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: administrativenetworkdomains.plexus.io
+spec:
+  group: plexus.io
+  names:
+    kind: AdministrativeNetworkDomain
+    listKind: AdministrativeNetworkDomainList
+    plural: administrativenetworkdomains
+    shortNames:
+    - and
+    singular: administrativenetworkdomain
+  scope: Cluster
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          AdministrativeNetworkDomain defines an isolated network boundary that groups one or more
+          subnets into a logically isolated network with its own address space and
+          automatic intra-domain routing. Plexus translates this intent into
+          backend-specific resources (UDNs, CNCs, RouteAdvertisements, etc. for the
+          OVN-Kubernetes backend).
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: AdministrativeNetworkDomainSpec defines the desired state
+              of an AdministrativeNetworkDomain.
+            properties:
+              subnets:
+                description: |-
+                  subnets defines the subnets within this AdministrativeNetworkDomain. The Plexus
+                  controller creates backend-specific network resources for each entry.
+                  For the OVN-Kubernetes backend, each subnet becomes a namespace +
+                  ClusterUserDefinedNetwork. Subnets within the same AdministrativeNetworkDomain can
+                  have different topologies and transports.
+                items:
+                  description: |-
+                    Subnet defines a subnet within the AdministrativeNetworkDomain. The Plexus controller
+                    creates backend-specific resources from this definition. For the
+                    OVN-Kubernetes backend, each subnet maps to a namespace + UDN (L2 EVPN).
+                    Each subnet maps 1:1 to a single namespace.
+                  properties:
+                    availabilityZone:
+                      description: |-
+                        availabilityZone optionally pins this subnet to a specific
+                        failure domain. It selects which clusters and which nodes
+                        within those clusters the subnet is placed on.
+
+                        If omitted, the subnet spans all clusters and all nodes
+                        (no AZ pinning).
+                      properties:
+                        clusterSelector:
+                          description: |-
+                            clusterSelector selects which clusters this subnet is placed on
+                            in multi-cluster deployments. The hub Plexus controller matches
+                            these labels against its cluster inventory. Only clusters whose
+                            labels satisfy the selector receive the resources for this subnet.
+                          properties:
+                            matchExpressions:
+                              description: matchExpressions is a list of label selector
+                                requirements. The requirements are ANDed.
+                              items:
+                                description: |-
+                                  A label selector requirement is a selector that contains values, a key, and an operator that
+                                  relates the key and values.
+                                properties:
+                                  key:
+                                    description: key is the label key that the selector
+                                      applies to.
+                                    type: string
+                                  operator:
+                                    description: |-
+                                      operator represents a key's relationship to a set of values.
+                                      Valid operators are In, NotIn, Exists and DoesNotExist.
+                                    type: string
+                                  values:
+                                    description: |-
+                                      values is an array of string values. If the operator is In or NotIn,
+                                      the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                      the values array must be empty. This array is replaced during a strategic
+                                      merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                    x-kubernetes-list-type: atomic
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            matchLabels:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                operator is "In", and the values array contains only "value". The requirements are ANDed.
+                              type: object
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        nodeSelector:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            nodeSelector optionally restricts the subnet to nodes matching
+                            these labels within each target cluster. The Plexus controller
+                            translates this into a namespace node selector so that all pods
+                            in the subnet schedule only on matching nodes.
+
+                            Typical use: AZ pinning via
+                            { "topology.kubernetes.io/zone": "rack-a" }.
+
+                            If empty or omitted, the subnet spans all nodes in the cluster.
+                          type: object
+                      required:
+                      - clusterSelector
+                      type: object
+                    cidrs:
+                      description: |-
+                        cidrs defines the IP address range(s) for this subnet.
+                        At most two CIDRs may be specified: one IPv4 and one IPv6
+                        for dual-stack. If a single CIDR is provided, the subnet is
+                        single-stack (v4 or v6).
+                      items:
+                        type: string
+                      maxItems: 2
+                      minItems: 1
+                      type: array
+                      x-kubernetes-list-type: atomic
+                      x-kubernetes-validations:
+                      - message: when two CIDRs are specified they must be from different
+                          address families (one IPv4, one IPv6)
+                        rule: self.size() <= 1 || (self.exists(c, c.contains(':'))
+                          && self.exists(c, !c.contains(':')))
+                    name:
+                      description: |-
+                        name is the subnet name. For the OVN-Kubernetes backend, the resulting
+                        namespace and UDN are named "<networkdomain>-<subnet>".
+
+                        The combined "<networkdomain>-<subnet>" must respect Kubernetes
+                        namespace name limits (63 characters, DNS label).
+                      type: string
+                    type:
+                      default: Private
+                      description: |-
+                        type defines the subnet type which determines its external
+                        connectivity and the resources the Plexus controller provisions:
+
+                        - Public: externally reachable. OVN-Kubernetes backend creates
+                          RouteAdvertisements (BGP) to export subnet routes.
+                        - Private: no direct external reachability. Outbound traffic is
+                          SNATed using node IPs.
+                        - Isolated: no routes outside the AdministrativeNetworkDomain. No
+                          RouteAdvertisements, no SNAT, no intra-domain routing. Traffic
+                          is confined to the subnet.
+                        - VPNOnly: traffic exits the AdministrativeNetworkDomain exclusively through a
+                          VPN connection.
+
+                        Defaults to Private if not specified.
+                      enum:
+                      - Public
+                      - Private
+                      - Isolated
+                      - VPNOnly
+                      type: string
+                  required:
+                  - cidrs
+                  - name
+                  type: object
+                minItems: 1
+                type: array
+            required:
+            - subnets
+            type: object
+          status:
+            description: AdministrativeNetworkDomainStatus defines the observed state
+              of an AdministrativeNetworkDomain.
+            properties:
+              conditions:
+                description: conditions reports the status of AdministrativeNetworkDomain
+                  operations.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

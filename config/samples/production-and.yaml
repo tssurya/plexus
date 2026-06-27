@@ -1,0 +1,40 @@
+apiVersion: plexus.io/v1beta1
+kind: AdministrativeNetworkDomain
+metadata:
+  name: production
+spec:
+  subnets:
+    - name: web-a
+      cidrs:
+        - 10.0.1.0/24
+      type: Public
+      availabilityZone:
+        clusterSelector:
+          matchLabels:
+            topology.kubernetes.io/region: us-east
+        nodeSelector:
+          topology.kubernetes.io/zone: rack-a
+    - name: web-b
+      cidrs:
+        - 10.0.2.0/24
+      type: Public
+      availabilityZone:
+        clusterSelector:
+          matchLabels:
+            topology.kubernetes.io/region: us-east
+    - name: app-a
+      cidrs:
+        - 10.0.10.0/24
+      type: Private
+    - name: app-b
+      cidrs:
+        - 10.0.11.0/24
+      type: Private
+    - name: db-a
+      cidrs:
+        - 10.0.20.0/24
+      type: Isolated
+    - name: db-b
+      cidrs:
+        - 10.0.21.0/24
+      type: Isolated
