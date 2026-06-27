@@ -1,0 +1,80 @@
+package v1beta1
+
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+// PlexusControllerConfig is a singleton resource that configures the Plexus
+// operator. It specifies which backend to use and provides backend-specific
+// settings such as VTEP ranges, FRR selectors, and IPAM configuration.
+//
+// +genclient
+// +genclient:nonNamespaced
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:resource:path=plexuscontrollerconfigs,scope=Cluster,singular=plexuscontrollerconfig
+// +kubebuilder:object:root=true
+type PlexusControllerConfig struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	// +kubebuilder:validation:Required
+	// +required
+	Spec PlexusControllerConfigSpec `json:"spec"`
+}
+
+// PlexusControllerConfigSpec defines the desired configuration for the Plexus operator.
+//
+// +kubebuilder:validation:XValidation:rule="self.backend != 'ovn-kubernetes' || has(self.ovnKubernetes)",message="ovnKubernetes configuration is required when backend is 'ovn-kubernetes'"
+type PlexusControllerConfigSpec struct {
+	// backend selects which network backend the operator uses to
+	// translate AdministrativeNetworkDomains into platform resources.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum="ovn-kubernetes"
+	// +kubebuilder:default="ovn-kubernetes"
+	// +required
+	Backend string `json:"backend"`
+
+	// ovnKubernetes holds configuration specific to the OVN-Kubernetes
+	// backend. Required when backend is "ovn-kubernetes".
+	//
+	// +optional
+	OVNKubernetes *OVNKubernetesConfig `json:"ovnKubernetes,omitempty"`
+}
+
+// OVNKubernetesConfig holds settings for the OVN-Kubernetes backend.
+type OVNKubernetesConfig struct {
+	// vtepCIDRs defines the IP ranges used for VTEP (VXLAN Tunnel
+	// Endpoint) discovery in EVPN mode. The Plexus operator creates
+	// a shared unmanaged VTEP resource with these CIDRs. In
+	// multi-cluster deployments, this range must cover the VTEP IPs
+	// of all participating clusters so that cross-cluster EVPN
+	// tunnels can be established.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:items:XValidation:rule="isCIDR(self)",message="each vtepCIDR must be a valid CIDR notation (e.g. 10.100.0.0/16)"
+	// +required
+	VTEPCIDRs []string `json:"vtepCIDRs"`
+
+	// frrConfigurationSelector selects the base FRRConfiguration
+	// resource that RouteAdvertisements reference for BGP peering.
+	// This must match an existing FRRConfiguration on the cluster.
+	//
+	// +kubebuilder:validation:Required
+	// +required
+	FRRConfigurationSelector metav1.LabelSelector `json:"frrConfigurationSelector"`
+}
+
+// PlexusControllerConfigList contains a list of PlexusControllerConfig resources.
+//
+// +kubebuilder:object:root=true
+type PlexusControllerConfigList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []PlexusControllerConfig `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&PlexusControllerConfig{}, &PlexusControllerConfigList{})
+}

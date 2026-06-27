@@ -1,0 +1,138 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: plexuscontrollerconfigs.plexus.io
+spec:
+  group: plexus.io
+  names:
+    kind: PlexusControllerConfig
+    listKind: PlexusControllerConfigList
+    plural: plexuscontrollerconfigs
+    singular: plexuscontrollerconfig
+  scope: Cluster
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          PlexusControllerConfig is a singleton resource that configures the Plexus
+          operator. It specifies which backend to use and provides backend-specific
+          settings such as VTEP ranges, FRR selectors, and IPAM configuration.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: PlexusControllerConfigSpec defines the desired configuration
+              for the Plexus operator.
+            properties:
+              backend:
+                default: ovn-kubernetes
+                description: |-
+                  backend selects which network backend the operator uses to
+                  translate AdministrativeNetworkDomains into platform resources.
+                enum:
+                - ovn-kubernetes
+                type: string
+              ovnKubernetes:
+                description: |-
+                  ovnKubernetes holds configuration specific to the OVN-Kubernetes
+                  backend. Required when backend is "ovn-kubernetes".
+                properties:
+                  frrConfigurationSelector:
+                    description: |-
+                      frrConfigurationSelector selects the base FRRConfiguration
+                      resource that RouteAdvertisements reference for BGP peering.
+                      This must match an existing FRRConfiguration on the cluster.
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  vtepCIDRs:
+                    description: |-
+                      vtepCIDRs defines the IP ranges used for VTEP (VXLAN Tunnel
+                      Endpoint) discovery in EVPN mode. The Plexus operator creates
+                      a shared unmanaged VTEP resource with these CIDRs. In
+                      multi-cluster deployments, this range must cover the VTEP IPs
+                      of all participating clusters so that cross-cluster EVPN
+                      tunnels can be established.
+                    items:
+                      type: string
+                      x-kubernetes-validations:
+                      - message: each vtepCIDR must be a valid CIDR notation (e.g.
+                          10.100.0.0/16)
+                        rule: isCIDR(self)
+                    minItems: 1
+                    type: array
+                required:
+                - frrConfigurationSelector
+                - vtepCIDRs
+                type: object
+            required:
+            - backend
+            type: object
+            x-kubernetes-validations:
+            - message: ovnKubernetes configuration is required when backend is 'ovn-kubernetes'
+              rule: self.backend != 'ovn-kubernetes' || has(self.ovnKubernetes)
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
