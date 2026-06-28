@@ -37,8 +37,8 @@ Examples:
 				return fmt.Errorf("creating AND %q: %w", args[0], err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "administrativenetworkdomain/%s created\n", args[0])
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "administrativenetworkdomain/%s created\n", args[0])
+			return err
 		},
 	}
 }

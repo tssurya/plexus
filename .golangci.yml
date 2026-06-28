@@ -10,8 +10,6 @@ linters:
     - ineffassign
     - staticcheck
     - unused
-    - gofmt
-    - goimports
     - misspell
     - revive
 
@@ -20,5 +18,13 @@ linters:
       rules:
         - name: exported
           disabled: true
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
     goimports:
-      local-prefixes: github.com/ovn-kubernetes/plexus
+      local-prefixes:
+        - github.com/ovn-kubernetes/plexus

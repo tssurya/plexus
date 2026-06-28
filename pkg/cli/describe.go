@@ -31,40 +31,64 @@ func newDescribeCommand() *cobra.Command {
 
 			out := cmd.OutOrStdout()
 
-			fmt.Fprintf(out, "Name:         %s\n", and.Name)
-			fmt.Fprintf(out, "Created:      %s (%s ago)\n",
+			if _, err := fmt.Fprintf(out, "Name:         %s\n", and.Name); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(out, "Created:      %s (%s ago)\n",
 				and.CreationTimestamp.Format(time.RFC3339),
-				formatDuration(time.Since(and.CreationTimestamp.Time)))
-			fmt.Fprintf(out, "Subnets:      %d\n", len(and.Spec.Subnets))
+				formatDuration(time.Since(and.CreationTimestamp.Time))); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(out, "Subnets:      %d\n", len(and.Spec.Subnets)); err != nil {
+				return err
+			}
 
 			if len(and.Spec.Subnets) > 0 {
-				fmt.Fprintln(out)
+				if _, err := fmt.Fprintln(out); err != nil {
+					return err
+				}
 				w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
-				fmt.Fprintln(w, "  SUBNET\tCIDRS\tTYPE\tAVAILABILITY ZONE")
+				if _, err := fmt.Fprintln(w, "  SUBNET\tCIDRS\tTYPE\tAVAILABILITY ZONE"); err != nil {
+					return err
+				}
 				for _, s := range and.Spec.Subnets {
-					fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
+					if _, err := fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
 						s.Name,
 						cidrStrings(s.CIDRs),
 						s.Type,
-						formatAZ(s.AvailabilityZone))
+						formatAZ(s.AvailabilityZone)); err != nil {
+						return err
+					}
 				}
-				w.Flush()
+				if err := w.Flush(); err != nil {
+					return err
+				}
 			}
 
 			if len(and.Status.Conditions) > 0 {
-				fmt.Fprintln(out)
-				fmt.Fprintln(out, "Conditions:")
+				if _, err := fmt.Fprintln(out); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintln(out, "Conditions:"); err != nil {
+					return err
+				}
 				w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
-				fmt.Fprintln(w, "  TYPE\tSTATUS\tREASON\tMESSAGE\tLAST TRANSITION")
+				if _, err := fmt.Fprintln(w, "  TYPE\tSTATUS\tREASON\tMESSAGE\tLAST TRANSITION"); err != nil {
+					return err
+				}
 				for _, c := range and.Status.Conditions {
-					fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n",
+					if _, err := fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n",
 						c.Type,
 						c.Status,
 						c.Reason,
 						c.Message,
-						formatDuration(time.Since(c.LastTransitionTime.Time))+" ago")
+						formatDuration(time.Since(c.LastTransitionTime.Time))+" ago"); err != nil {
+						return err
+					}
 				}
-				w.Flush()
+				if err := w.Flush(); err != nil {
+					return err
+				}
 			}
 
 			return nil

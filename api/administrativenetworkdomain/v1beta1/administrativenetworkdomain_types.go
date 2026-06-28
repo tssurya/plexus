@@ -2,6 +2,7 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // AdministrativeNetworkDomain defines an isolated network boundary that groups one or more
@@ -173,5 +174,8 @@ type AdministrativeNetworkDomainList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&AdministrativeNetworkDomain{}, &AdministrativeNetworkDomainList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(GroupVersion, &AdministrativeNetworkDomain{}, &AdministrativeNetworkDomainList{})
+		return nil
+	})
 }

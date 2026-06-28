@@ -23,15 +23,17 @@ func newDeleteCommand() *cobra.Command {
 			name := args[0]
 
 			if !yes {
-				fmt.Fprintf(cmd.OutOrStdout(), "This will delete AND %q and all its associated resources. Continue? [y/N] ", name)
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "This will delete AND %q and all its associated resources. Continue? [y/N] ", name); err != nil {
+					return err
+				}
 				reader := bufio.NewReader(cmd.InOrStdin())
 				answer, err := reader.ReadString('\n')
 				if err != nil {
 					return fmt.Errorf("reading confirmation: %w", err)
 				}
 				if strings.TrimSpace(strings.ToLower(answer)) != "y" {
-					fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
-					return nil
+					_, err = fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+					return err
 				}
 			}
 
@@ -50,8 +52,8 @@ func newDeleteCommand() *cobra.Command {
 				return fmt.Errorf("deleting AND %q: %w", name, err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "administrativenetworkdomain/%s deleted\n", name)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "administrativenetworkdomain/%s deleted\n", name)
+			return err
 		},
 	}
 

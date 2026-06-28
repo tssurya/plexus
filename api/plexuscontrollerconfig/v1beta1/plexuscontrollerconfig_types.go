@@ -2,6 +2,7 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // PlexusControllerConfig is a singleton resource that configures the Plexus
@@ -79,7 +80,10 @@ type PlexusControllerConfigList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&PlexusControllerConfig{}, &PlexusControllerConfigList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(GroupVersion, &PlexusControllerConfig{}, &PlexusControllerConfigList{})
+		return nil
+	})
 }
 
 // CIDR represents an IP network in CIDR notation (e.g. "10.100.0.0/16" or "fd00:100::/64").

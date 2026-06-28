@@ -33,17 +33,19 @@ Examples:
 			subnetName := args[1]
 
 			if !yes {
-				fmt.Fprintf(cmd.OutOrStdout(),
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(),
 					"This will delete subnet %q from AND %q and remove its associated resources. Continue? [y/N] ",
-					subnetName, ndName)
+					subnetName, ndName); err != nil {
+					return err
+				}
 				reader := bufio.NewReader(cmd.InOrStdin())
 				answer, err := reader.ReadString('\n')
 				if err != nil {
 					return fmt.Errorf("reading confirmation: %w", err)
 				}
 				if strings.TrimSpace(strings.ToLower(answer)) != "y" {
-					fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
-					return nil
+					_, err = fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+					return err
 				}
 			}
 
@@ -83,8 +85,8 @@ Examples:
 				return fmt.Errorf("patching AND %q: %w", ndName, err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "subnet/%s deleted from administrativenetworkdomain/%s\n", subnetName, ndName)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "subnet/%s deleted from administrativenetworkdomain/%s\n", subnetName, ndName)
+			return err
 		},
 	}
 

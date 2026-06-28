@@ -98,8 +98,8 @@ Examples:
 				return fmt.Errorf("patching AND %q: %w", ndName, err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "subnet/%s added to administrativenetworkdomain/%s\n", subnetName, ndName)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "subnet/%s added to administrativenetworkdomain/%s\n", subnetName, ndName)
+			return err
 		},
 	}
 

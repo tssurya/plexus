@@ -16,8 +16,9 @@ func newVersionCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Print the plexus CLI version",
 		Args:  cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Fprintf(cmd.OutOrStdout(), "plexus version %s (commit: %s)\n", Version, GitCommit)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, err := fmt.Fprintf(cmd.OutOrStdout(), "plexus version %s (commit: %s)\n", Version, GitCommit)
+			return err
 		},
 	}
 }
