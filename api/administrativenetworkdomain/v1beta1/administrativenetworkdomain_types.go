@@ -78,6 +78,7 @@ type Subnet struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
 	// +required
 	Name string `json:"name"`
 
@@ -93,6 +94,7 @@ type Subnet struct {
 	// +required
 	//
 	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || (self.exists(c, c.contains(':')) && self.exists(c, !c.contains(':')))",message="when two CIDRs are specified they must be from different address families (one IPv4, one IPv6)"
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="cidrs is immutable once set"
 	CIDRs []CIDR `json:"cidrs"`
 
 	// type defines the subnet type which determines its external
@@ -112,6 +114,7 @@ type Subnet struct {
 	//
 	// +optional
 	// +kubebuilder:default=Private
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="type is immutable once set"
 	Type SubnetType `json:"type,omitempty"`
 
 	// availabilityZone optionally pins this subnet to a specific

@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -26,6 +25,14 @@ import (
 const finalizerName = "plexus.io/and-protection"
 
 // ANDReconciler reconciles AdministrativeNetworkDomain resources.
+//
+// TODO: emit Kubernetes Events on significant state changes (subnet
+// created/deleted, VTEP not ready, reconcile error) for observability
+// via kubectl describe. Use record.EventRecorder from the manager.
+//
+// TODO: add Prometheus metrics for reconciliation latency, error counts,
+// VNI pool utilization, and child resource health. Register via the
+// controller-runtime metrics registry.
 type ANDReconciler struct {
 	client.Client
 	Backend backend.Backend
@@ -116,7 +123,11 @@ func (r *ANDReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	if result.Requeue {
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		// Use Requeue (not RequeueAfter) to leverage the workqueue's
+		// built-in exponential backoff rate limiter (5ms to ~16min).
+		// This avoids custom backoff logic and follows the standard
+		// controller-runtime pattern for transient not-ready states.
+		return ctrl.Result{Requeue: true}, nil
 	}
 	return ctrl.Result{}, nil
 }

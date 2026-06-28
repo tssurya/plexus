@@ -120,6 +120,13 @@ func subnetKey(andName, subnetName, vrfType string) string {
 // both MACVRF and IPVRF VNIs; all other types get only a MACVRF VNI.
 // Allocations are idempotent — calling with the same key returns the
 // previously allocated VNIs.
+//
+// TODO: there is a narrow race where the controller crashes after
+// allocating a VNI here but before creating the CUDN. On restart the
+// allocator rebuilds from existing CUDNs, so the orphaned VNI is never
+// reclaimed. This is practically harmless given the 24-bit VNI space,
+// but could be fixed by persisting pending allocations to a ConfigMap
+// before creating the CUDN.
 func (a *VNIAllocator) AllocateSubnetVNIs(andName, subnetName string, subnetType v1beta1.SubnetType) (SubnetVNIs, error) {
 	macVNI, err := a.allocator.AllocateID(subnetKey(andName, subnetName, "macvrf"))
 	if err != nil {

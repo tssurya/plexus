@@ -173,6 +173,8 @@ spec:
                           address families (one IPv4, one IPv6)
                         rule: self.size() <= 1 || (self.exists(c, c.contains(':'))
                           && self.exists(c, !c.contains(':')))
+                      - message: cidrs is immutable once set
+                        rule: self == oldSelf
                     name:
                       description: |-
                         name is the subnet name. For the OVN-Kubernetes backend, the resulting
@@ -181,6 +183,7 @@ spec:
                         The combined "<networkdomain>-<subnet>" must respect Kubernetes
                         namespace name limits (63 characters, DNS label).
                       maxLength: 63
+                      pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
                       type: string
                     type:
                       default: Private
@@ -205,6 +208,9 @@ spec:
                       - Isolated
                       - VPNOnly
                       type: string
+                      x-kubernetes-validations:
+                      - message: type is immutable once set
+                        rule: self == oldSelf
                   required:
                   - cidrs
                   - name

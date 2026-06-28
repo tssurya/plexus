@@ -68,6 +68,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	// TODO: enable leader election by default for production deployments.
+	// Currently disabled unless --leader-elect is passed. Multi-replica
+	// deployments MUST use leader election to prevent split-brain VNI
+	// allocation and duplicate resource creation.
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme:                 scheme,
 		HealthProbeBindAddress: probeAddr,
