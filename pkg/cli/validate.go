@@ -67,3 +67,18 @@ func cidrStrings(cidrs []v1beta1.CIDR) string {
 	}
 	return strings.Join(strs, ",")
 }
+
+func parseKeyValuePairs(pairs []string) (map[string]string, error) {
+	if len(pairs) == 0 {
+		return nil, nil
+	}
+	result := make(map[string]string, len(pairs))
+	for _, p := range pairs {
+		k, v, ok := strings.Cut(p, "=")
+		if !ok || k == "" {
+			return nil, fmt.Errorf("invalid label %q: must be key=value", p)
+		}
+		result[k] = v
+	}
+	return result, nil
+}
