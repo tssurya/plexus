@@ -5,7 +5,7 @@ import (
 )
 
 var (
-	kubeconfig string
+	kubeconfig  string
 	kubecontext string
 )
 

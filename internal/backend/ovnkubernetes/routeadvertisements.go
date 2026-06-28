@@ -18,7 +18,7 @@ func raName(and *v1beta1.AdministrativeNetworkDomain) string {
 	return fmt.Sprintf("%s-public", and.Name)
 }
 
-func (b *OVNKubernetesBackend) reconcileRouteAdvertisements(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain) error {
+func (b *OVNKubernetesBackend) reconcileRouteAdvertisements(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain, cl client.Client) error {
 	hasPublic := false
 	for i := range and.Spec.Subnets {
 		if and.Spec.Subnets[i].Type == v1beta1.SubnetTypePublic {
@@ -30,15 +30,15 @@ func (b *OVNKubernetesBackend) reconcileRouteAdvertisements(ctx context.Context,
 	name := raName(and)
 
 	if !hasPublic {
-		return b.deleteRouteAdvertisementsByName(ctx, name)
+		return b.deleteRouteAdvertisementsByName(ctx, name, cl)
 	}
 
 	existing := &rav1.RouteAdvertisements{}
-	err := b.client.Get(ctx, client.ObjectKey{Name: name}, existing)
+	err := cl.Get(ctx, client.ObjectKey{Name: name}, existing)
 	if apierrors.IsNotFound(err) {
 		ra := b.buildRouteAdvertisements(and)
 		b.log.Info("creating RouteAdvertisements", "name", name)
-		if err := b.client.Create(ctx, ra); err != nil {
+		if err := cl.Create(ctx, ra); err != nil {
 			return fmt.Errorf("creating RouteAdvertisements %q: %w", name, err)
 		}
 		return nil
@@ -56,7 +56,7 @@ func (b *OVNKubernetesBackend) reconcileRouteAdvertisements(ctx context.Context,
 		existing.Labels[k] = v
 	}
 	b.log.Info("updating RouteAdvertisements", "name", name)
-	if err := b.client.Update(ctx, existing); err != nil {
+	if err := cl.Update(ctx, existing); err != nil {
 		return fmt.Errorf("updating RouteAdvertisements %q: %w", name, err)
 	}
 
@@ -93,17 +93,17 @@ func (b *OVNKubernetesBackend) buildRouteAdvertisements(and *v1beta1.Administrat
 	}
 }
 
-func (b *OVNKubernetesBackend) deleteRouteAdvertisements(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain) error {
-	return b.deleteRouteAdvertisementsByName(ctx, raName(and))
+func (b *OVNKubernetesBackend) deleteRouteAdvertisements(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain, cl client.Client) error {
+	return b.deleteRouteAdvertisementsByName(ctx, raName(and), cl)
 }
 
-func (b *OVNKubernetesBackend) deleteRouteAdvertisementsByName(ctx context.Context, name string) error {
+func (b *OVNKubernetesBackend) deleteRouteAdvertisementsByName(ctx context.Context, name string, cl client.Client) error {
 	ra := &rav1.RouteAdvertisements{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 	}
-	err := b.client.Delete(ctx, ra)
+	err := cl.Delete(ctx, ra)
 	if apierrors.IsNotFound(err) {
 		return nil
 	}

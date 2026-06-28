@@ -14,15 +14,25 @@ import (
 
 	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 	"github.com/ovn-kubernetes/plexus/internal/backend"
+	"github.com/ovn-kubernetes/plexus/internal/multicluster"
 )
 
 // checkResourceStatus inspects the status conditions of all child resources
-// (VTEP, CUDNs, RouteAdvertisements) and returns a Result indicating whether
-// the AND should be marked as not-ready.
-func (b *OVNKubernetesBackend) checkResourceStatus(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain) (backend.Result, error) {
+// (VTEP, CUDNs, RouteAdvertisements) across all clusters and returns a Result
+// indicating whether the AND should be marked as not-ready.
+func (b *OVNKubernetesBackend) checkResourceStatus(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain, clusters []multicluster.ClusterInfo) (backend.Result, error) {
+	for _, ci := range clusters {
+		if result, err := b.checkClusterResourceStatus(ctx, and, ci.Client, ci.Name); err != nil || result.Requeue {
+			return result, err
+		}
+	}
+	return backend.Result{}, nil
+}
+
+func (b *OVNKubernetesBackend) checkClusterResourceStatus(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain, cl client.Client, clusterName string) (backend.Result, error) {
 	vtep := &vtepv1.VTEP{}
-	if err := b.client.Get(ctx, client.ObjectKey{Name: vtepName}, vtep); err != nil {
-		return backend.Result{}, fmt.Errorf("getting VTEP %q status: %w", vtepName, err)
+	if err := cl.Get(ctx, client.ObjectKey{Name: vtepName}, vtep); err != nil {
+		return backend.Result{}, fmt.Errorf("getting VTEP %q status on cluster %q: %w", vtepName, clusterName, err)
 	}
 	cond := apimeta.FindStatusCondition(vtep.Status.Conditions, "Accepted")
 	if cond == nil || cond.Status != metav1.ConditionTrue {
@@ -33,15 +43,15 @@ func (b *OVNKubernetesBackend) checkResourceStatus(ctx context.Context, and *v1b
 		return backend.Result{
 			Requeue:       true,
 			StatusReason:  "VTEPNotReady",
-			StatusMessage: msg,
+			StatusMessage: fmt.Sprintf("cluster %q: %s", clusterName, msg),
 		}, nil
 	}
 
 	for i := range and.Spec.Subnets {
 		name := cudnName(and, &and.Spec.Subnets[i])
 		cudn := &udnv1.ClusterUserDefinedNetwork{}
-		if err := b.client.Get(ctx, client.ObjectKey{Name: name}, cudn); err != nil {
-			return backend.Result{}, fmt.Errorf("getting CUDN %q status: %w", name, err)
+		if err := cl.Get(ctx, client.ObjectKey{Name: name}, cudn); err != nil {
+			return backend.Result{}, fmt.Errorf("getting CUDN %q status on cluster %q: %w", name, clusterName, err)
 		}
 		cond := apimeta.FindStatusCondition(cudn.Status.Conditions, "NetworkCreated")
 		if cond == nil || cond.Status != metav1.ConditionTrue {
@@ -52,7 +62,7 @@ func (b *OVNKubernetesBackend) checkResourceStatus(ctx context.Context, and *v1b
 			return backend.Result{
 				Requeue:       true,
 				StatusReason:  "SubnetsNotReady",
-				StatusMessage: fmt.Sprintf("CUDN %q not ready: %s", name, msg),
+				StatusMessage: fmt.Sprintf("cluster %q: CUDN %q not ready: %s", clusterName, name, msg),
 			}, nil
 		}
 	}
@@ -67,8 +77,8 @@ func (b *OVNKubernetesBackend) checkResourceStatus(ctx context.Context, and *v1b
 	if hasPublic {
 		name := raName(and)
 		ra := &rav1.RouteAdvertisements{}
-		if err := b.client.Get(ctx, client.ObjectKey{Name: name}, ra); err != nil {
-			return backend.Result{}, fmt.Errorf("getting RouteAdvertisements %q status: %w", name, err)
+		if err := cl.Get(ctx, client.ObjectKey{Name: name}, ra); err != nil {
+			return backend.Result{}, fmt.Errorf("getting RouteAdvertisements %q status on cluster %q: %w", name, clusterName, err)
 		}
 		cond := apimeta.FindStatusCondition(ra.Status.Conditions, "Accepted")
 		if cond == nil || cond.Status != metav1.ConditionTrue {
@@ -79,7 +89,7 @@ func (b *OVNKubernetesBackend) checkResourceStatus(ctx context.Context, and *v1b
 			return backend.Result{
 				Requeue:       true,
 				StatusReason:  "SubnetsNotReady",
-				StatusMessage: fmt.Sprintf("RouteAdvertisements %q not accepted: %s", name, msg),
+				StatusMessage: fmt.Sprintf("cluster %q: RouteAdvertisements %q not accepted: %s", clusterName, name, msg),
 			}, nil
 		}
 	}

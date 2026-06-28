@@ -13,14 +13,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	rav1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/routeadvertisements/v1"
+	udnv1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/userdefinednetwork/v1"
+	vtepv1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/vtep/v1"
+
 	andv1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 	configv1beta1 "github.com/ovn-kubernetes/plexus/api/plexuscontrollerconfig/v1beta1"
 	"github.com/ovn-kubernetes/plexus/internal/backend/ovnkubernetes"
 	"github.com/ovn-kubernetes/plexus/internal/controller"
-
-	rav1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/routeadvertisements/v1"
-	udnv1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/userdefinednetwork/v1"
-	vtepv1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/vtep/v1"
+	"github.com/ovn-kubernetes/plexus/internal/multicluster"
 )
 
 var scheme = runtime.NewScheme()
@@ -38,10 +39,12 @@ func main() {
 	var metricsAddr string
 	var probeAddr string
 	var enableLeaderElection bool
+	var clusterSecretNamespace string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false, "Enable leader election for controller manager.")
+	flag.StringVar(&clusterSecretNamespace, "cluster-secret-namespace", "", "Restrict cluster Secret discovery to this namespace (default: all namespaces).")
 
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -83,11 +86,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	backend := ovnkubernetes.New(mgr.GetClient(), ctrl.Log, plexusConfig.Spec.OVNKubernetes)
+	inventory := multicluster.NewSecretInventory(multicluster.SecretInventoryOptions{
+		HubClient: mgr.GetClient(),
+		HubLabels: map[string]string{},
+		Scheme:    scheme,
+		Namespace: clusterSecretNamespace,
+		Log:       ctrl.Log,
+	})
+
+	backend := ovnkubernetes.New(mgr.GetClient(), ctrl.Log, plexusConfig.Spec.OVNKubernetes, inventory)
 
 	if err := (&controller.ANDReconciler{
-		Client:  mgr.GetClient(),
-		Backend: backend,
+		Client:    mgr.GetClient(),
+		Backend:   backend,
+		Inventory: inventory,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AND")
 		os.Exit(1)

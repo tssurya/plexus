@@ -71,7 +71,8 @@ func desiredAnnotations(subnet *v1beta1.Subnet) map[string]string {
 
 // reconcileSubnet ensures the namespace for the given subnet exists with
 // the correct labels and annotations, then reconciles the CUDN.
-func (b *OVNKubernetesBackend) reconcileSubnet(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain, subnet *v1beta1.Subnet) error {
+// The cl parameter specifies which cluster to create resources on.
+func (b *OVNKubernetesBackend) reconcileSubnet(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain, subnet *v1beta1.Subnet, cl client.Client) error {
 	nsName := namespaceName(and, subnet)
 	labels := desiredLabels(and, subnet)
 	annotations := desiredAnnotations(subnet)
@@ -85,26 +86,23 @@ func (b *OVNKubernetesBackend) reconcileSubnet(ctx context.Context, and *v1beta1
 	}
 
 	existing := &corev1.Namespace{}
-	err := b.client.Get(ctx, client.ObjectKeyFromObject(ns), existing)
+	err := cl.Get(ctx, client.ObjectKeyFromObject(ns), existing)
 	if apierrors.IsNotFound(err) {
 		b.log.Info("creating namespace for subnet", "namespace", nsName, "subnet", subnet.Name)
-		if err := b.client.Create(ctx, ns); err != nil {
+		if err := cl.Create(ctx, ns); err != nil {
 			return fmt.Errorf("creating namespace %q: %w", nsName, err)
 		}
-		return b.reconcileCUDN(ctx, and, subnet)
+		return b.reconcileCUDN(ctx, and, subnet, cl)
 	}
 	if err != nil {
 		return fmt.Errorf("getting namespace %q: %w", nsName, err)
 	}
 
-	if err := b.reconcileNamespaceMetadata(ctx, existing, labels, annotations); err != nil {
+	if err := b.reconcileNamespaceMetadata(ctx, existing, labels, annotations, cl); err != nil {
 		return err
 	}
 
-	// TODO: create RouteAdvertisements for Public subnets
-	// TODO: create CNC for intra-domain routing between non-Isolated subnets
-
-	return b.reconcileCUDN(ctx, and, subnet)
+	return b.reconcileCUDN(ctx, and, subnet, cl)
 }
 
 // reconcileNamespaceMetadata updates labels and annotations on an existing
@@ -114,6 +112,7 @@ func (b *OVNKubernetesBackend) reconcileNamespaceMetadata(
 	ns *corev1.Namespace,
 	desiredLabels map[string]string,
 	desiredAnnotations map[string]string,
+	cl client.Client,
 ) error {
 	needsUpdate := false
 
@@ -142,7 +141,7 @@ func (b *OVNKubernetesBackend) reconcileNamespaceMetadata(
 
 	if needsUpdate {
 		b.log.Info("updating namespace metadata", "namespace", ns.Name)
-		if err := b.client.Update(ctx, ns); err != nil {
+		if err := cl.Update(ctx, ns); err != nil {
 			return fmt.Errorf("updating namespace %q metadata: %w", ns.Name, err)
 		}
 	}
@@ -152,8 +151,8 @@ func (b *OVNKubernetesBackend) reconcileNamespaceMetadata(
 
 // deleteSubnet removes the CUDN (cluster-scoped, not cascade-deleted) and
 // then the namespace for the given subnet.
-func (b *OVNKubernetesBackend) deleteSubnet(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain, subnet *v1beta1.Subnet) error {
-	if err := b.deleteCUDN(ctx, and, subnet); err != nil {
+func (b *OVNKubernetesBackend) deleteSubnet(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain, subnet *v1beta1.Subnet, cl client.Client) error {
+	if err := b.deleteCUDN(ctx, and, subnet, cl); err != nil {
 		return err
 	}
 
@@ -164,7 +163,7 @@ func (b *OVNKubernetesBackend) deleteSubnet(ctx context.Context, and *v1beta1.Ad
 		},
 	}
 
-	err := b.client.Delete(ctx, ns)
+	err := cl.Delete(ctx, ns)
 	if apierrors.IsNotFound(err) {
 		return nil
 	}

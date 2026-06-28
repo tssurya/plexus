@@ -13,8 +13,8 @@ import (
 	"context"
 	"fmt"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	udnv1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/userdefinednetwork/v1"
@@ -88,11 +88,12 @@ func (b *OVNKubernetesBackend) reconcileCUDN(
 	ctx context.Context,
 	and *v1beta1.AdministrativeNetworkDomain,
 	subnet *v1beta1.Subnet,
+	cl client.Client,
 ) error {
 	name := cudnName(and, subnet)
 
 	existing := &udnv1.ClusterUserDefinedNetwork{}
-	err := b.client.Get(ctx, client.ObjectKey{Name: name}, existing)
+	err := cl.Get(ctx, client.ObjectKey{Name: name}, existing)
 	if apierrors.IsNotFound(err) {
 		vnis, allocErr := b.vniAllocator.AllocateSubnetVNIs(and.Name, subnet.Name, subnet.Type)
 		if allocErr != nil {
@@ -101,7 +102,7 @@ func (b *OVNKubernetesBackend) reconcileCUDN(
 
 		desired := b.buildCUDN(and, subnet, vnis)
 		b.log.Info("creating CUDN for subnet", "cudn", name, "macvrf-vni", vnis.MACVRF, "ipvrf-vni", vnis.IPVRF)
-		if err := b.client.Create(ctx, desired); err != nil {
+		if err := cl.Create(ctx, desired); err != nil {
 			return fmt.Errorf("creating CUDN %q: %w", name, err)
 		}
 		return nil
@@ -110,12 +111,11 @@ func (b *OVNKubernetesBackend) reconcileCUDN(
 		return fmt.Errorf("getting CUDN %q: %w", name, err)
 	}
 
-	// CUDN exists — rebuild VNI allocator state from what's on the cluster.
 	if err := b.reserveVNIsFromExistingCUDN(and.Name, subnet.Name, existing); err != nil {
 		return fmt.Errorf("reserving VNIs from existing CUDN %q: %w", name, err)
 	}
 
-	if err := b.updateCUDNLabels(ctx, existing, and, subnet); err != nil {
+	if err := b.updateCUDNLabels(ctx, existing, and, subnet, cl); err != nil {
 		return err
 	}
 
@@ -158,6 +158,7 @@ func (b *OVNKubernetesBackend) updateCUDNLabels(
 	existing *udnv1.ClusterUserDefinedNetwork,
 	and *v1beta1.AdministrativeNetworkDomain,
 	subnet *v1beta1.Subnet,
+	cl client.Client,
 ) error {
 	desired := map[string]string{
 		labelNetworkDomain: and.Name,
@@ -178,7 +179,7 @@ func (b *OVNKubernetesBackend) updateCUDNLabels(
 
 	if needsUpdate {
 		b.log.Info("updating CUDN labels", "cudn", existing.Name)
-		if err := b.client.Update(ctx, existing); err != nil {
+		if err := cl.Update(ctx, existing); err != nil {
 			return fmt.Errorf("updating CUDN %q labels: %w", existing.Name, err)
 		}
 	}
@@ -191,6 +192,7 @@ func (b *OVNKubernetesBackend) deleteCUDN(
 	ctx context.Context,
 	and *v1beta1.AdministrativeNetworkDomain,
 	subnet *v1beta1.Subnet,
+	cl client.Client,
 ) error {
 	name := cudnName(and, subnet)
 
@@ -200,7 +202,7 @@ func (b *OVNKubernetesBackend) deleteCUDN(
 		},
 	}
 
-	err := b.client.Delete(ctx, cudn)
+	err := cl.Delete(ctx, cudn)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("deleting CUDN %q: %w", name, err)
 	}

@@ -8,18 +8,21 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	rav1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/routeadvertisements/v1"
 	udnv1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/userdefinednetwork/v1"
 	vtepv1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/vtep/v1"
-	rav1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/routeadvertisements/v1"
 
 	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 	"github.com/ovn-kubernetes/plexus/internal/backend"
+	"github.com/ovn-kubernetes/plexus/internal/multicluster"
 )
 
 const finalizerName = "plexus.io/and-protection"
@@ -35,13 +38,15 @@ const finalizerName = "plexus.io/and-protection"
 // controller-runtime metrics registry.
 type ANDReconciler struct {
 	client.Client
-	Backend backend.Backend
+	Backend   backend.Backend
+	Inventory *multicluster.SecretInventory
 }
 
 // +kubebuilder:rbac:groups=plexus.io,resources=administrativenetworkdomains,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=plexus.io,resources=administrativenetworkdomains/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=plexus.io,resources=administrativenetworkdomains/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=k8s.ovn.org,resources=clusteruserdefinednetworks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=k8s.ovn.org,resources=routeadvertisements,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=k8s.ovn.org,resources=vteps,verbs=get;list;watch;create;update;patch;delete
@@ -51,6 +56,11 @@ type ANDReconciler struct {
 
 func (r *ANDReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+
+	if err := r.Inventory.Sync(ctx); err != nil {
+		logger.Error(err, "failed to sync cluster inventory")
+		return ctrl.Result{}, fmt.Errorf("syncing cluster inventory: %w", err)
+	}
 
 	and := &v1beta1.AdministrativeNetworkDomain{}
 	if err := r.Get(ctx, req.NamespacedName, and); err != nil {
@@ -155,13 +165,39 @@ func (r *ANDReconciler) plexusVTEPToANDs(ctx context.Context, obj client.Object)
 	return requests
 }
 
+// clusterSecretToANDs maps changes to cluster Secrets (plexus.io/cluster=true)
+// to all AND resources, since a cluster inventory change may affect which
+// clusters each subnet targets.
+func (r *ANDReconciler) clusterSecretToANDs(ctx context.Context, obj client.Object) []reconcile.Request {
+	if obj.GetLabels()[multicluster.LabelCluster] != "true" {
+		return nil
+	}
+	var andList v1beta1.AdministrativeNetworkDomainList
+	if err := r.List(ctx, &andList); err != nil {
+		return nil
+	}
+	requests := make([]reconcile.Request, len(andList.Items))
+	for i := range andList.Items {
+		requests[i] = reconcile.Request{NamespacedName: client.ObjectKey{Name: andList.Items[i].Name}}
+	}
+	return requests
+}
+
 func (r *ANDReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	clusterSecretFilter := predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		return obj.GetLabels()[multicluster.LabelCluster] == "true"
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.AdministrativeNetworkDomain{}).
 		Watches(&corev1.Namespace{}, handler.EnqueueRequestsFromMapFunc(andNameFromLabels)).
 		Watches(&udnv1.ClusterUserDefinedNetwork{}, handler.EnqueueRequestsFromMapFunc(andNameFromLabels)).
 		Watches(&rav1.RouteAdvertisements{}, handler.EnqueueRequestsFromMapFunc(andNameFromLabels)).
 		Watches(&vtepv1.VTEP{}, handler.EnqueueRequestsFromMapFunc(r.plexusVTEPToANDs)).
+		Watches(&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(r.clusterSecretToANDs),
+			builder.WithPredicates(clusterSecretFilter),
+		).
 		Named("and").
 		Complete(r)
 }
