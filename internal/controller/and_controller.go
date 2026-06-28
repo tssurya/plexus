@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -15,6 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	udnv1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/userdefinednetwork/v1"
+	vtepv1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/vtep/v1"
+	rav1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/routeadvertisements/v1"
 
 	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 	"github.com/ovn-kubernetes/plexus/internal/backend"
@@ -35,6 +38,9 @@ type ANDReconciler struct {
 // +kubebuilder:rbac:groups=k8s.ovn.org,resources=clusteruserdefinednetworks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=k8s.ovn.org,resources=routeadvertisements,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=k8s.ovn.org,resources=vteps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=k8s.ovn.org,resources=vteps/status,verbs=get
+// +kubebuilder:rbac:groups=k8s.ovn.org,resources=clusteruserdefinednetworks/status,verbs=get
+// +kubebuilder:rbac:groups=k8s.ovn.org,resources=routeadvertisements/status,verbs=get
 
 func (r *ANDReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -88,6 +94,14 @@ func (r *ANDReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			Message:            "No subnets defined; domain is awaiting subnet configuration",
 			ObservedGeneration: and.Generation,
 		})
+	} else if result.StatusReason != "" {
+		meta.SetStatusCondition(&and.Status.Conditions, metav1.Condition{
+			Type:               "Ready",
+			Status:             metav1.ConditionFalse,
+			Reason:             result.StatusReason,
+			Message:            result.StatusMessage,
+			ObservedGeneration: and.Generation,
+		})
 	} else {
 		meta.SetStatusCondition(&and.Status.Conditions, metav1.Condition{
 			Type:               "Ready",
@@ -102,7 +116,7 @@ func (r *ANDReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	if result.Requeue {
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -115,11 +129,28 @@ func andNameFromLabels(_ context.Context, obj client.Object) []reconcile.Request
 	return []reconcile.Request{{NamespacedName: client.ObjectKey{Name: andName}}}
 }
 
+func (r *ANDReconciler) plexusVTEPToANDs(ctx context.Context, obj client.Object) []reconcile.Request {
+	if obj.GetLabels()["plexus.io/managed-by"] != "plexus" {
+		return nil
+	}
+	var andList v1beta1.AdministrativeNetworkDomainList
+	if err := r.List(ctx, &andList); err != nil {
+		return nil
+	}
+	requests := make([]reconcile.Request, len(andList.Items))
+	for i := range andList.Items {
+		requests[i] = reconcile.Request{NamespacedName: client.ObjectKey{Name: andList.Items[i].Name}}
+	}
+	return requests
+}
+
 func (r *ANDReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.AdministrativeNetworkDomain{}).
 		Watches(&corev1.Namespace{}, handler.EnqueueRequestsFromMapFunc(andNameFromLabels)).
 		Watches(&udnv1.ClusterUserDefinedNetwork{}, handler.EnqueueRequestsFromMapFunc(andNameFromLabels)).
+		Watches(&rav1.RouteAdvertisements{}, handler.EnqueueRequestsFromMapFunc(andNameFromLabels)).
+		Watches(&vtepv1.VTEP{}, handler.EnqueueRequestsFromMapFunc(r.plexusVTEPToANDs)).
 		Named("and").
 		Complete(r)
 }

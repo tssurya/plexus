@@ -56,7 +56,7 @@ func (b *OVNKubernetesBackend) Reconcile(ctx context.Context, and *v1beta1.Admin
 		return backend.Result{}, fmt.Errorf("reconciling RouteAdvertisements: %w", err)
 	}
 
-	return backend.Result{}, nil
+	return b.checkResourceStatus(ctx, and)
 }
 
 func (b *OVNKubernetesBackend) Delete(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain) error {

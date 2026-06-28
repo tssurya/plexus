@@ -28,4 +28,8 @@ type Result struct {
 	// for another reconciliation pass (e.g. because a backend resource
 	// is not yet ready).
 	Requeue bool
+	// StatusReason is non-empty when child resources are not ready.
+	StatusReason string
+	// StatusMessage provides detail about the non-ready state.
+	StatusMessage string
 }
