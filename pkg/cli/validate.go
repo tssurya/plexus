@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 )
@@ -49,4 +50,20 @@ func validateCIDRs(cidrs []string) error {
 		}
 	}
 	return nil
+}
+
+func toCIDRs(strs []string) []v1beta1.CIDR {
+	cidrs := make([]v1beta1.CIDR, len(strs))
+	for i, s := range strs {
+		cidrs[i] = v1beta1.CIDR(s)
+	}
+	return cidrs
+}
+
+func cidrStrings(cidrs []v1beta1.CIDR) string {
+	strs := make([]string, len(cidrs))
+	for i, c := range cidrs {
+		strs[i] = string(c)
+	}
+	return strings.Join(strs, ",")
 }

@@ -61,6 +61,9 @@ spec:
                       frrConfigurationSelector selects the base FRRConfiguration
                       resource that RouteAdvertisements reference for BGP peering.
                       This must match an existing FRRConfiguration on the cluster.
+                      In multi-cluster deployments, both the hub and each spoke cluster
+                      must have an FRRConfiguration matching this selector for BGP
+                      advertisements to be established.
                     properties:
                       matchExpressions:
                         description: matchExpressions is a list of label selector
@@ -114,11 +117,14 @@ spec:
                       of all participating clusters so that cross-cluster EVPN
                       tunnels can be established.
                     items:
+                      description: CIDR represents an IP network in CIDR notation
+                        (e.g. "10.100.0.0/16" or "fd00:100::/64").
+                      maxLength: 43
                       type: string
                       x-kubernetes-validations:
-                      - message: each vtepCIDR must be a valid CIDR notation (e.g.
-                          10.100.0.0/16)
-                        rule: isCIDR(self)
+                      - message: must be a valid network address in CIDR notation
+                        rule: isCIDR(self) && cidr(self) == cidr(self).masked()
+                    maxItems: 20
                     minItems: 1
                     type: array
                 required:

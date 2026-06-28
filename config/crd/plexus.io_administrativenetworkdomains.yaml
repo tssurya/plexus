@@ -157,7 +157,13 @@ spec:
                         for dual-stack. If a single CIDR is provided, the subnet is
                         single-stack (v4 or v6).
                       items:
+                        description: CIDR represents an IP network in CIDR notation
+                          (e.g. "10.0.0.0/16" or "fd00::/64").
+                        maxLength: 43
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid network address in CIDR notation
+                          rule: isCIDR(self) && cidr(self) == cidr(self).masked()
                       maxItems: 2
                       minItems: 1
                       type: array
@@ -174,6 +180,7 @@ spec:
 
                         The combined "<networkdomain>-<subnet>" must respect Kubernetes
                         namespace name limits (63 characters, DNS label).
+                      maxLength: 63
                       type: string
                     type:
                       default: Private
@@ -202,6 +209,7 @@ spec:
                   - cidrs
                   - name
                   type: object
+                maxItems: 100
                 type: array
             type: object
           status:
@@ -273,6 +281,11 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: combined <and-name>-<subnet-name> must not exceed 63 characters
+            (Kubernetes namespace name limit)
+          rule: '!has(self.spec.subnets) || self.spec.subnets.all(s, size(self.metadata.name)
+            + size(s.name) + 1 <= 63)'
     served: true
     storage: true
     subresources:

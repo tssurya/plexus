@@ -53,13 +53,16 @@ type OVNKubernetesConfig struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:items:XValidation:rule="isCIDR(self)",message="each vtepCIDR must be a valid CIDR notation (e.g. 10.100.0.0/16)"
+	// +kubebuilder:validation:MaxItems=20
 	// +required
-	VTEPCIDRs []string `json:"vtepCIDRs"`
+	VTEPCIDRs []CIDR `json:"vtepCIDRs"`
 
 	// frrConfigurationSelector selects the base FRRConfiguration
 	// resource that RouteAdvertisements reference for BGP peering.
 	// This must match an existing FRRConfiguration on the cluster.
+	// In multi-cluster deployments, both the hub and each spoke cluster
+	// must have an FRRConfiguration matching this selector for BGP
+	// advertisements to be established.
 	//
 	// +kubebuilder:validation:Required
 	// +required
@@ -78,3 +81,8 @@ type PlexusControllerConfigList struct {
 func init() {
 	SchemeBuilder.Register(&PlexusControllerConfig{}, &PlexusControllerConfigList{})
 }
+
+// CIDR represents an IP network in CIDR notation (e.g. "10.100.0.0/16" or "fd00:100::/64").
+// +kubebuilder:validation:XValidation:rule="isCIDR(self) && cidr(self) == cidr(self).masked()",message="must be a valid network address in CIDR notation"
+// +kubebuilder:validation:MaxLength=43
+type CIDR string

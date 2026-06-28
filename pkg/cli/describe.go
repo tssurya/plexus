@@ -44,7 +44,7 @@ func newDescribeCommand() *cobra.Command {
 				for _, s := range and.Spec.Subnets {
 					fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
 						s.Name,
-						strings.Join(s.CIDRs, ","),
+						cidrStrings(s.CIDRs),
 						s.Type,
 						formatAZ(s.AvailabilityZone))
 				}

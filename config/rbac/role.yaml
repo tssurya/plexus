@@ -17,6 +17,20 @@ rules:
   - update
   - watch
 - apiGroups:
+  - k8s.ovn.org
+  resources:
+  - clusteruserdefinednetworks
+  - routeadvertisements
+  - vteps
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - plexus.io
   resources:
   - administrativenetworkdomains

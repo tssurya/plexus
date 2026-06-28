@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 
@@ -8,19 +9,29 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
+	andv1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
+	configv1beta1 "github.com/ovn-kubernetes/plexus/api/plexuscontrollerconfig/v1beta1"
 	"github.com/ovn-kubernetes/plexus/internal/backend/ovnkubernetes"
 	"github.com/ovn-kubernetes/plexus/internal/controller"
+
+	rav1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/routeadvertisements/v1"
+	udnv1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/userdefinednetwork/v1"
+	vtepv1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/vtep/v1"
 )
 
 var scheme = runtime.NewScheme()
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(v1beta1.AddToScheme(scheme))
+	utilruntime.Must(andv1beta1.AddToScheme(scheme))
+	utilruntime.Must(configv1beta1.AddToScheme(scheme))
+	utilruntime.Must(udnv1.AddToScheme(scheme))
+	utilruntime.Must(rav1.AddToScheme(scheme))
+	utilruntime.Must(vtepv1.AddToScheme(scheme))
 }
 
 func main() {
@@ -39,7 +50,25 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	setupLog := ctrl.Log.WithName("setup")
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+
+	directClient, err := client.New(restConfig, client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "unable to create direct client for config lookup")
+		os.Exit(1)
+	}
+
+	plexusConfig := &configv1beta1.PlexusControllerConfig{}
+	if err := directClient.Get(context.Background(), client.ObjectKey{Name: "plexus"}, plexusConfig); err != nil {
+		setupLog.Error(err, "unable to fetch PlexusControllerConfig 'plexus'")
+		os.Exit(1)
+	}
+	if plexusConfig.Spec.OVNKubernetes == nil {
+		setupLog.Error(nil, "PlexusControllerConfig 'plexus' is missing ovnKubernetes configuration")
+		os.Exit(1)
+	}
+
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme:                 scheme,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
@@ -50,7 +79,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	backend := ovnkubernetes.New(mgr.GetClient(), ctrl.Log)
+	backend := ovnkubernetes.New(mgr.GetClient(), ctrl.Log, plexusConfig.Spec.OVNKubernetes)
 
 	if err := (&controller.ANDReconciler{
 		Client:  mgr.GetClient(),

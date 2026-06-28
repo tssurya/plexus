@@ -57,7 +57,7 @@ Examples:
 
 			and.Spec.Subnets = append(and.Spec.Subnets, v1beta1.Subnet{
 				Name:  subnetName,
-				CIDRs: cidrs,
+				CIDRs: toCIDRs(cidrs),
 				Type:  st,
 			})
 

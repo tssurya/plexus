@@ -1,0 +1,114 @@
+package ovnkubernetes
+
+import (
+	"context"
+	"fmt"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	rav1 "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/routeadvertisements/v1"
+	crdtypes "github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/types"
+
+	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
+)
+
+func raName(and *v1beta1.AdministrativeNetworkDomain) string {
+	return fmt.Sprintf("%s-public", and.Name)
+}
+
+func (b *OVNKubernetesBackend) reconcileRouteAdvertisements(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain) error {
+	hasPublic := false
+	for i := range and.Spec.Subnets {
+		if and.Spec.Subnets[i].Type == v1beta1.SubnetTypePublic {
+			hasPublic = true
+			break
+		}
+	}
+
+	name := raName(and)
+
+	if !hasPublic {
+		return b.deleteRouteAdvertisementsByName(ctx, name)
+	}
+
+	existing := &rav1.RouteAdvertisements{}
+	err := b.client.Get(ctx, client.ObjectKey{Name: name}, existing)
+	if apierrors.IsNotFound(err) {
+		ra := b.buildRouteAdvertisements(and)
+		b.log.Info("creating RouteAdvertisements", "name", name)
+		if err := b.client.Create(ctx, ra); err != nil {
+			return fmt.Errorf("creating RouteAdvertisements %q: %w", name, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("getting RouteAdvertisements %q: %w", name, err)
+	}
+
+	desired := b.buildRouteAdvertisements(and)
+	existing.Spec = desired.Spec
+	if existing.Labels == nil {
+		existing.Labels = make(map[string]string)
+	}
+	for k, v := range desired.Labels {
+		existing.Labels[k] = v
+	}
+	b.log.Info("updating RouteAdvertisements", "name", name)
+	if err := b.client.Update(ctx, existing); err != nil {
+		return fmt.Errorf("updating RouteAdvertisements %q: %w", name, err)
+	}
+
+	return nil
+}
+
+func (b *OVNKubernetesBackend) buildRouteAdvertisements(and *v1beta1.AdministrativeNetworkDomain) *rav1.RouteAdvertisements {
+	return &rav1.RouteAdvertisements{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: raName(and),
+			Labels: map[string]string{
+				labelManagedBy:     "plexus",
+				labelNetworkDomain: and.Name,
+			},
+		},
+		Spec: rav1.RouteAdvertisementsSpec{
+			NetworkSelectors: crdtypes.NetworkSelectors{
+				{
+					NetworkSelectionType: crdtypes.ClusterUserDefinedNetworks,
+					ClusterUserDefinedNetworkSelector: &crdtypes.ClusterUserDefinedNetworkSelector{
+						NetworkSelector: metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								labelNetworkDomain: and.Name,
+								labelSubnetType:    string(v1beta1.SubnetTypePublic),
+							},
+						},
+					},
+				},
+			},
+			NodeSelector:             metav1.LabelSelector{},
+			FRRConfigurationSelector: b.config.FRRConfigurationSelector,
+			Advertisements:           []rav1.AdvertisementType{rav1.PodNetwork},
+		},
+	}
+}
+
+func (b *OVNKubernetesBackend) deleteRouteAdvertisements(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain) error {
+	return b.deleteRouteAdvertisementsByName(ctx, raName(and))
+}
+
+func (b *OVNKubernetesBackend) deleteRouteAdvertisementsByName(ctx context.Context, name string) error {
+	ra := &rav1.RouteAdvertisements{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+	}
+	err := b.client.Delete(ctx, ra)
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("deleting RouteAdvertisements %q: %w", name, err)
+	}
+	return nil
+}

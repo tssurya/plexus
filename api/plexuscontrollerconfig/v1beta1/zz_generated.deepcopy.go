@@ -29,7 +29,7 @@ func (in *OVNKubernetesConfig) DeepCopyInto(out *OVNKubernetesConfig) {
 	*out = *in
 	if in.VTEPCIDRs != nil {
 		in, out := &in.VTEPCIDRs, &out.VTEPCIDRs
-		*out = make([]string, len(*in))
+		*out = make([]CIDR, len(*in))
 		copy(*out, *in)
 	}
 	in.FRRConfigurationSelector.DeepCopyInto(&out.FRRConfigurationSelector)

@@ -18,6 +18,7 @@ import (
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,description="Whether all subnets are reconciled"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:validation:XValidation:rule="!has(self.spec.subnets) || self.spec.subnets.all(s, size(self.metadata.name) + size(s.name) + 1 <= 63)",message="combined <and-name>-<subnet-name> must not exceed 63 characters (Kubernetes namespace name limit)"
 type AdministrativeNetworkDomain struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -44,6 +45,7 @@ type AdministrativeNetworkDomainSpec struct {
 	// any network resources until at least one subnet is added.
 	//
 	// +optional
+	// +kubebuilder:validation:MaxItems=100
 	Subnets []Subnet `json:"subnets,omitempty"`
 }
 
@@ -58,6 +60,11 @@ const (
 	SubnetTypeVPNOnly  SubnetType = "VPNOnly"
 )
 
+// CIDR represents an IP network in CIDR notation (e.g. "10.0.0.0/16" or "fd00::/64").
+// +kubebuilder:validation:XValidation:rule="isCIDR(self) && cidr(self) == cidr(self).masked()",message="must be a valid network address in CIDR notation"
+// +kubebuilder:validation:MaxLength=43
+type CIDR string
+
 // Subnet defines a subnet within the AdministrativeNetworkDomain. The Plexus controller
 // creates backend-specific resources from this definition. For the
 // OVN-Kubernetes backend, each subnet maps to a namespace + UDN (L2 EVPN).
@@ -70,6 +77,7 @@ type Subnet struct {
 	// namespace name limits (63 characters, DNS label).
 	//
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=63
 	// +required
 	Name string `json:"name"`
 
@@ -85,7 +93,7 @@ type Subnet struct {
 	// +required
 	//
 	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || (self.exists(c, c.contains(':')) && self.exists(c, !c.contains(':')))",message="when two CIDRs are specified they must be from different address families (one IPv4, one IPv6)"
-	CIDRs []string `json:"cidrs"`
+	CIDRs []CIDR `json:"cidrs"`
 
 	// type defines the subnet type which determines its external
 	// connectivity and the resources the Plexus controller provisions:

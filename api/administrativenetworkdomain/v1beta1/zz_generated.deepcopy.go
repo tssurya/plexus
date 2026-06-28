@@ -156,7 +156,7 @@ func (in *Subnet) DeepCopyInto(out *Subnet) {
 	*out = *in
 	if in.CIDRs != nil {
 		in, out := &in.CIDRs, &out.CIDRs
-		*out = make([]string, len(*in))
+		*out = make([]CIDR, len(*in))
 		copy(*out, *in)
 	}
 	if in.AvailabilityZone != nil {
