@@ -73,6 +73,7 @@ func (b *OVNKubernetesBackend) buildRouteAdvertisements(and *v1beta1.Administrat
 			},
 		},
 		Spec: rav1.RouteAdvertisementsSpec{
+			TargetVRF: "auto",
 			NetworkSelectors: crdtypes.NetworkSelectors{
 				{
 					NetworkSelectionType: crdtypes.ClusterUserDefinedNetworks,
