@@ -47,6 +47,8 @@ type AdministrativeNetworkDomainSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=100
+	// +listType=map
+	// +listMapKey=name
 	Subnets []Subnet `json:"subnets,omitempty"`
 }
 
@@ -80,6 +82,7 @@ type Subnet struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="name is immutable once set"
 	// +required
 	Name string `json:"name"`
 

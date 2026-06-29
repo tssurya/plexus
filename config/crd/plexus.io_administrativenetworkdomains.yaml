@@ -185,6 +185,9 @@ spec:
                       maxLength: 63
                       pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
                       type: string
+                      x-kubernetes-validations:
+                      - message: name is immutable once set
+                        rule: self == oldSelf
                     type:
                       default: Private
                       description: |-
@@ -217,6 +220,9 @@ spec:
                   type: object
                 maxItems: 100
                 type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
             type: object
           status:
             description: AdministrativeNetworkDomainStatus defines the observed state
