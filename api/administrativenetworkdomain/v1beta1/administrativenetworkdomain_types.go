@@ -179,6 +179,7 @@ type AdministrativeNetworkDomainList struct {
 func init() {
 	SchemeBuilder.Register(func(s *runtime.Scheme) error {
 		s.AddKnownTypes(GroupVersion, &AdministrativeNetworkDomain{}, &AdministrativeNetworkDomainList{})
+		metav1.AddToGroupVersion(s, GroupVersion)
 		return nil
 	})
 }

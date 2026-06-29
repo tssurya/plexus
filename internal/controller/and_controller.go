@@ -45,8 +45,11 @@ type ANDReconciler struct {
 // +kubebuilder:rbac:groups=plexus.io,resources=administrativenetworkdomains,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=plexus.io,resources=administrativenetworkdomains/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=plexus.io,resources=administrativenetworkdomains/finalizers,verbs=update
+// +kubebuilder:rbac:groups=plexus.io,resources=plexuscontrollerconfigs,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=k8s.ovn.org,resources=clusteruserdefinednetworks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=k8s.ovn.org,resources=routeadvertisements,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=k8s.ovn.org,resources=vteps,verbs=get;list;watch;create;update;patch;delete

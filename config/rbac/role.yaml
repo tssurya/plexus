@@ -7,6 +7,13 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - namespaces
   verbs:
   - create
@@ -23,6 +30,18 @@ rules:
   verbs:
   - get
   - list
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - k8s.ovn.org
@@ -72,3 +91,11 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - plexus.io
+  resources:
+  - plexuscontrollerconfigs
+  verbs:
+  - get
+  - list
+  - watch
