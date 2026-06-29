@@ -1,0 +1,103 @@
+# Auto-generated from +kubebuilder:rbac markers. Run "make generate" to update.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "plexus.name" . }}
+  labels:
+    {{- include "plexus.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - k8s.ovn.org
+  resources:
+  - clusteruserdefinednetworks
+  - routeadvertisements
+  - vteps
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - k8s.ovn.org
+  resources:
+  - clusteruserdefinednetworks/status
+  - routeadvertisements/status
+  - vteps/status
+  verbs:
+  - get
+- apiGroups:
+  - plexus.io
+  resources:
+  - administrativenetworkdomains
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - plexus.io
+  resources:
+  - administrativenetworkdomains/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - plexus.io
+  resources:
+  - administrativenetworkdomains/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - plexus.io
+  resources:
+  - plexuscontrollerconfigs
+  verbs:
+  - get
+  - list
+  - watch

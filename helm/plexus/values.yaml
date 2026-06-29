@@ -1,0 +1,32 @@
+image:
+  repository: plexus-controller
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+leaderElection: false
+
+# Namespace to look for spoke cluster Secrets.
+# Empty string means all namespaces.
+clusterSecretNamespace: "plexus-system"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# OVN-Kubernetes backend configuration.
+# These values are rendered into the PlexusControllerConfig CR.
+ovnKubernetes:
+  # VTEP CIDRs for EVPN tunnel discovery.
+  vtepCIDRs:
+    - "172.18.0.0/16"
+
+  # Label selector matching the base FRRConfiguration resource
+  # that RouteAdvertisements reference for BGP peering.
+  frrConfigurationSelector:
+    matchLabels: {}

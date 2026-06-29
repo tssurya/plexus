@@ -16,10 +16,21 @@ help: ## Display this help
 ##@ Code Generation
 
 .PHONY: generate
-generate: ## Generate deepcopy methods and CRD manifests
+generate: ## Generate deepcopy methods, CRD manifests, RBAC, and sync to Helm chart
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 	$(CONTROLLER_GEN) crd paths="./api/..." output:crd:artifacts:config=config/crd
 	$(CONTROLLER_GEN) rbac:roleName=plexus-controller paths="./internal/controller/..." output:rbac:artifacts:config=config/rbac
+	cp config/crd/*.yaml helm/plexus/crds/
+	@{ \
+		printf '# Auto-generated from +kubebuilder:rbac markers. Run "make generate" to update.\n'; \
+		printf 'apiVersion: rbac.authorization.k8s.io/v1\n'; \
+		printf 'kind: ClusterRole\n'; \
+		printf 'metadata:\n'; \
+		printf '  name: {{ include "plexus.name" . }}\n'; \
+		printf '  labels:\n'; \
+		printf '    {{- include "plexus.labels" . | nindent 4 }}\n'; \
+		sed -n '/^rules:/,$$p' config/rbac/role.yaml; \
+	} > helm/plexus/templates/clusterrole.yaml
 
 .PHONY: manifests
 manifests: ## Generate CRD manifests only
@@ -27,9 +38,9 @@ manifests: ## Generate CRD manifests only
 
 .PHONY: verify-codegen
 verify-codegen: generate ## Verify generated files are up to date
-	@if [ -n "$$(git status --porcelain api/ config/crd/ config/rbac/)" ]; then \
+	@if [ -n "$$(git status --porcelain api/ config/crd/ config/rbac/ helm/plexus/crds/ helm/plexus/templates/clusterrole.yaml)" ]; then \
 		echo "ERROR: generated files are out of date. Run 'make generate' and commit the result."; \
-		git diff api/ config/crd/ config/rbac/; \
+		git diff api/ config/crd/ config/rbac/ helm/plexus/crds/ helm/plexus/templates/clusterrole.yaml; \
 		exit 1; \
 	fi
 
@@ -90,15 +101,39 @@ uninstall: ## Uninstall CRDs from the configured cluster
 	kubectl delete -f config/crd/
 
 .PHONY: deploy
-deploy: manifests ## Deploy controller to the configured cluster
+deploy: manifests ## Deploy controller to the configured cluster (raw manifests)
 	kubectl apply -f config/manager/
 	kubectl apply -f config/rbac/
 
 .PHONY: undeploy
-undeploy: ## Undeploy controller from the configured cluster
+undeploy: ## Undeploy controller from the configured cluster (raw manifests)
 	kubectl delete -f config/manager/
 	kubectl delete -f config/rbac/
+
+.PHONY: helm-install
+helm-install: manifests ## Install Plexus via Helm
+	helm upgrade --install plexus helm/plexus/
+
+.PHONY: helm-uninstall
+helm-uninstall: ## Uninstall Plexus via Helm
+	helm uninstall plexus
 
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf bin/ cover.out
+
+##@ KIND Clusters
+
+OVN_KUBERNETES_PATH ?= $(shell cd ../ovn-kubernetes 2>/dev/null && pwd)
+
+.PHONY: kind
+kind: ## Create a single-cluster Plexus dev environment with EVPN
+	OVN_KUBERNETES_PATH=$(OVN_KUBERNETES_PATH) contrib/plexus-kind.sh
+
+.PHONY: kind-multi
+kind-multi: ## Create a multi-cluster (hub + 1 spoke) Plexus dev environment
+	OVN_KUBERNETES_PATH=$(OVN_KUBERNETES_PATH) contrib/plexus-kind-multi.sh --spokes 1
+
+.PHONY: kind-delete
+kind-delete: ## Tear down all Plexus KIND clusters
+	@contrib/plexus-kind-multi.sh --delete 2>/dev/null; contrib/plexus-kind.sh --delete 2>/dev/null; true

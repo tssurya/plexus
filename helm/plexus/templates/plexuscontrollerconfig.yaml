@@ -1,0 +1,13 @@
+apiVersion: plexus.io/v1beta1
+kind: PlexusControllerConfig
+metadata:
+  name: plexus
+spec:
+  backend: ovn-kubernetes
+  ovnKubernetes:
+    vtepCIDRs:
+    {{- range .Values.ovnKubernetes.vtepCIDRs }}
+    - {{ . | quote }}
+    {{- end }}
+    frrConfigurationSelector:
+      {{- toYaml .Values.ovnKubernetes.frrConfigurationSelector | nindent 6 }}
