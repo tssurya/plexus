@@ -86,7 +86,7 @@ deploy_external_frr "$KUBECONFIG_FILE"
 install_frr_k8s "$KUBECONFIG_FILE"
 helm_install_ovnk "$CLUSTER_NAME" "$KUBECONFIG_FILE" "$DOCKER_NET"
 wait_for_ovnk "$KUBECONFIG_FILE"
-configure_frr_k8s_peering "$KUBECONFIG_FILE" "$CLUSTER_NAME"
+configure_frr_k8s_peering "$KUBECONFIG_FILE" "$CLUSTER_NAME" "$DOCKER_NET"
 deploy_plexus_controller "$CLUSTER_NAME" "$KUBECONFIG_FILE" "$DOCKER_NETWORK_SUBNET"
 
 echo ""

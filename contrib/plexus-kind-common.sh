@@ -101,7 +101,12 @@ EOF
 detect_api_url() {
   local name=$1 network=${2:-kind}
   local ip
-  ip=$($OCI_BIN inspect -f "{{(index .NetworkSettings.Networks \"${network}\").IPAddress}}" "${name}-control-plane")
+  ip=$($OCI_BIN inspect -f "{{(index .NetworkSettings.Networks \"${network}\").IPAddress}}" "${name}-control-plane" 2>/dev/null)
+  if [ -z "$ip" ]; then
+    echo "error: could not get IP for ${name}-control-plane on network '${network}'." \
+         "Is the container running and connected to that network?" >&2
+    return 1
+  fi
   echo "https://${ip}:6443"
 }
 
@@ -217,7 +222,15 @@ clone_frr_k8s() {
   [ -n "$FRR_TMP_DIR" ] && [ -d "$FRR_TMP_DIR" ] && return
 
   FRR_TMP_DIR=$(mktemp -d)
-  trap 'rm -rf $FRR_TMP_DIR' EXIT
+  # Compose with any existing EXIT handler so we don't overwrite caller cleanup.
+  local _prev_exit
+  _prev_exit=$(trap -p EXIT | sed "s/trap -- \('.*'\) EXIT/\1/")
+  if [ -n "$_prev_exit" ]; then
+    # shellcheck disable=SC2064
+    trap "${_prev_exit}; rm -rf \$FRR_TMP_DIR" EXIT
+  else
+    trap 'rm -rf $FRR_TMP_DIR' EXIT
+  fi
 
   pushd "$FRR_TMP_DIR" >/dev/null
   git clone --quiet --no-tags --single-branch --branch main https://github.com/metallb/frr-k8s
@@ -350,12 +363,23 @@ install_frr_k8s() {
   KUBECONFIG="$kubeconfig" kubectl apply -f "${FRR_TMP_DIR}/frr-k8s/config/all-in-one/frr-k8s.yaml"
 
   echo "Waiting for FRR-K8s to be ready..."
-  KUBECONFIG="$kubeconfig" kubectl rollout status -n frr-k8s-system daemonset frr-k8s-daemon --timeout 5m || true
+  if ! KUBECONFIG="$kubeconfig" kubectl rollout status \
+      -n frr-k8s-system daemonset frr-k8s-daemon --timeout 5m; then
+    echo "Warning: frr-k8s-daemon did not roll out within 5m; current pod state:"
+    KUBECONFIG="$kubeconfig" kubectl get pods -n frr-k8s-system
+  fi
 }
 
-# Adapted from ovn-kubernetes/contrib/kind-common.sh: apply_frr_k8s_receive_config().
+# configure_frr_k8s_peering KUBECONFIG CLUSTER_NAME FRR_NETWORK
+# Waits for the frr-k8s webhook, then applies a FRRConfiguration that tells
+# frr-k8s nodes to accept all BGP routes from the external FRR route reflector.
+#
+# FRR_NETWORK is the Docker network on which FRR is connected to this cluster's
+# nodes (e.g. "plexus-hub" or "plexus-spoke-1"). Each cluster's frr-k8s nodes
+# must peer with FRR using FRR's IP on *their* Docker network; using FRR's hub
+# IP for spoke clusters prevents BGP sessions from establishing.
 configure_frr_k8s_peering() {
-  local kubeconfig=$1 cluster_name=$2
+  local kubeconfig=$1 cluster_name=$2 frr_network=${3:-kind}
 
   echo "Waiting for FRR-K8s webhook to become ready..."
   # The webhook declares readiness before its endpoint is actually serving,
@@ -364,7 +388,7 @@ configure_frr_k8s_peering() {
   timeout 120s bash -x <<PROBE || r=$?
 while true; do
   CLUSTER_IP=\$(KUBECONFIG="$kubeconfig" kubectl get svc -n frr-k8s-system frr-k8s-webhook-service -o jsonpath='{.spec.clusterIP}')
-  $OCI_BIN exec "${cluster_name}-control-plane" curl -ksS --connect-timeout 0.1 "https://\${CLUSTER_IP}" && exit 0
+  $OCI_BIN exec "${cluster_name}-control-plane" curl -ksS --connect-timeout 10 "https://\${CLUSTER_IP}" && exit 0
   echo "Waiting for frr-k8s webhook..."
   sleep 1
 done
@@ -374,14 +398,34 @@ PROBE
     KUBECONFIG="$kubeconfig" kubectl logs -n frr-k8s-system -l app=frr-k8s-webhook-server
   fi
 
-  echo "Applying FRR-K8s peering config..."
-  clone_frr_k8s
-  local config="${FRR_TMP_DIR}/frr-k8s/hack/demo/configs/receive_all.yaml"
-  # Our Docker networks are IPv4-only; strip any IPv6 neighbor entries that
-  # demo.sh populated with "invalid IP" to avoid webhook rejection.
-  sed -i '/"invalid IP"/d' "$config"
-  sed -i '/invalid IP/d' "$config"
-  KUBECONFIG="$kubeconfig" kubectl apply -n frr-k8s-system -f "$config"
+  # Resolve FRR's IP on this cluster's Docker network so frr-k8s nodes peer
+  # with the correct address (each cluster reaches FRR via its own subnet).
+  local frr_ip
+  frr_ip=$($OCI_BIN inspect plexus-frr \
+    --format "{{(index .NetworkSettings.Networks \"${frr_network}\").IPAddress}}" 2>/dev/null)
+  if [ -z "$frr_ip" ]; then
+    echo "Warning: could not get FRR IP on network '${frr_network}'; falling back to kind bridge"
+    frr_ip=$($OCI_BIN inspect plexus-frr \
+      --format "{{(index .NetworkSettings.Networks \"kind\").IPAddress}}" 2>/dev/null)
+  fi
+
+  echo "Applying FRR-K8s peering config (FRR neighbor: ${frr_ip})..."
+  KUBECONFIG="$kubeconfig" kubectl apply -n frr-k8s-system -f - <<EOF
+apiVersion: frrk8s.metallb.io/v1beta1
+kind: FRRConfiguration
+metadata:
+  name: receive-all
+spec:
+  bgp:
+    routers:
+    - asn: 64512
+      neighbors:
+      - address: ${frr_ip}
+        asn: 64512
+        toReceive:
+          allowed:
+            mode: all
+EOF
 }
 
 build_plexus_image() {
@@ -419,15 +463,31 @@ deploy_plexus_controller() {
   KUBECONFIG="$kubeconfig" helm upgrade --install plexus "${PLEXUS_DIR}/helm/plexus" "${helm_args[@]}"
 
   echo "Waiting for Plexus controller..."
-  KUBECONFIG="$kubeconfig" kubectl rollout status deployment -n plexus-system plexus-controller --timeout 2m || true
+  if ! KUBECONFIG="$kubeconfig" kubectl rollout status \
+      deployment -n plexus-system plexus-controller --timeout 2m; then
+    echo "Warning: plexus-controller did not roll out within 2m; current pod state:"
+    KUBECONFIG="$kubeconfig" kubectl get pods -n plexus-system
+  fi
 }
 
 wait_for_ovnk() {
   local kubeconfig=$1
   echo "Waiting for OVN-Kubernetes pods..."
-  KUBECONFIG="$kubeconfig" kubectl rollout status daemonset -n ovn-kubernetes ovs-node --timeout 5m || true
-  KUBECONFIG="$kubeconfig" kubectl rollout status deployment -n ovn-kubernetes ovnkube-control-plane --timeout 5m || true
-  KUBECONFIG="$kubeconfig" kubectl rollout status daemonset -n ovn-kubernetes ovnkube-node --timeout 5m || true
+  local failed=false
+  for resource in \
+      "daemonset/ovs-node" \
+      "deployment/ovnkube-control-plane" \
+      "daemonset/ovnkube-node"; do
+    if ! KUBECONFIG="$kubeconfig" kubectl rollout status \
+        -n ovn-kubernetes "$resource" --timeout 5m; then
+      echo "Warning: ${resource} did not roll out within 5m"
+      failed=true
+    fi
+  done
+  if [ "$failed" = true ]; then
+    echo "Current OVN-Kubernetes pod state:"
+    KUBECONFIG="$kubeconfig" kubectl get pods -n ovn-kubernetes
+  fi
 }
 
 connect_frr_to_network() {
@@ -471,7 +531,8 @@ create_spoke_secret() {
   raw_kubeconfig=$(kind get kubeconfig --name "$spoke_name")
 
   local patched_kubeconfig
-  patched_kubeconfig=$(echo "$raw_kubeconfig" | sed "s|server: https://127.0.0.1:[0-9]*|server: ${spoke_api_url}|")
+  patched_kubeconfig=$(echo "$raw_kubeconfig" | \
+    sed "s|server: https://127.0.0.1:[0-9]*|server: ${spoke_api_url}|")
 
   KUBECONFIG="$hub_kubeconfig" kubectl create namespace plexus-system 2>/dev/null || true
 

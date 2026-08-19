@@ -2,8 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Create a multi-cluster (hub + N spokes) KIND environment for Plexus.
-# All clusters share a single external FRR route reflector on the Docker
-# "kind" network, with non-overlapping pod/service CIDRs.
+#
+# Each cluster has its own Docker network (192.168.x.x) for FRR BGP peering.
+# Nodes are also connected to the shared "kind" bridge (172.18.0.0/16) before
+# OVN-K deploys, causing OVN-K to bridge the kind interface (eth1) as breth1
+# and use it as its uplink for all outgoing traffic. The VTEP CIDR is therefore
+# the kind subnet so ovn-encap-ip matches the actual outgoing interface, enabling
+# correct EVPN Geneve tunnels. The plexus-controller reaches spoke APIs via the
+# kind bridge IP (insecure-skip-tls-verify, since the kind IP is not in the cert SAN).
 #
 # Usage:
 #   contrib/plexus-kind-multi.sh [OPTIONS]
@@ -16,6 +22,65 @@
 #   --skip-build         Reuse existing OVN image
 #   --force-build        Rebuild OVN image even if it exists
 #   --delete             Tear down all clusters and exit
+#
+# Topology (hub + 2 spokes, CIDR_BASE=1):
+#
+# ╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+# ║  DOCKER HOST                                                                                   ║
+# ║                                                                                                ║
+# ║  Networks:  plexus-hub     192.168.11.0/24 ──gw 192.168.11.1  iptables DOCKER-USER:           ║
+# ║             plexus-spoke-1 192.168.12.0/24 ──gw 192.168.12.1  • cluster ↔ cluster (FRR BGP)  ║
+# ║             plexus-spoke-2 192.168.13.0/24 ──gw 192.168.13.1  • kind ↔ cluster (EVPN Geneve) ║
+# ║             kind (bridge)  172.18.0.0/16   ──gw 172.18.0.1    (setup_inter_cluster_routing)   ║
+# ╚══════════════╤═══════════════════════════╤══════════════════════════╤══════════════════════════╝
+#                │ (KIND_EXPERIMENTAL_DOCKER_NETWORK=plexus-hub/spoke-N)│
+#   ┌────────────▼──────────────┐ ┌──────────▼──────────────┐ ┌─────────▼───────────────┐
+#   │ plexus-hub                │ │ plexus-spoke-1          │ │ plexus-spoke-2          │
+#   │ 192.168.11.0/24           │ │ 192.168.12.0/24         │ │ 192.168.13.0/24         │
+#   │ Pod CIDR: 10.245.0.0/16   │ │ Pod CIDR: 10.246.0.0/16 │ │ Pod CIDR: 10.247.0.0/16 │
+#   │ Svc CIDR: 10.97.0.0/16    │ │ Svc CIDR: 10.98.0.0/16  │ │ Svc CIDR: 10.99.0.0/16  │
+#   │                           │ │                         │ │                         │
+#   │ Per node (2 interfaces):  │ │ Per node (2 interfaces):│ │ Per node (2 interfaces):│
+#   │  eth0    192.168.11.x/24  │ │  eth0  192.168.12.x/24  │ │  eth0  192.168.13.x/24  │
+#   │  eth1 ─► breth1 (OVS)    │ │  eth1 ─► breth1 (OVS)  │ │  eth1 ─► breth1 (OVS)  │
+#   │    breth1  172.18.0.x/16  │ │    breth1 172.18.0.x/16 │ │    breth1 172.18.0.x/16 │
+#   │    breth1  169.254.0.2/17 │ │    breth1 169.254.0.2   │ │    breth1 169.254.0.2   │
+#   │  mp0     10.245.{0,1}.2   │ │  mp0    10.246.{0,1}.2  │ │  mp0    10.247.{0,1}.2  │
+#   │                           │ │                         │ │                         │
+#   │ Default route + cross-    │ │ Default route + cross-  │ │ Default route + cross-  │
+#   │ cluster routes via breth1 │ │ cluster routes via breth1│ │ cluster routes via breth1│
+#   │  default → 172.18.0.1     │ │  default → 172.18.0.1   │ │  default → 172.18.0.1   │
+#   │  .12.0/24 → 172.18.0.1   │ │  .11.0/24 → 172.18.0.1  │ │  .11.0/24 → 172.18.0.1  │
+#   │  .13.0/24 → 172.18.0.1   │ │  .13.0/24 → 172.18.0.1  │ │  .12.0/24 → 172.18.0.1  │
+#   └──────────┬────────────────┘ └──────────┬──────────────┘ └─────────┬───────────────┘
+#   FRR BGP via eth0            FRR BGP via eth0             FRR BGP via eth0
+#   (192.168.11.4)              (192.168.12.4)               (192.168.13.4)
+#              │                             │                            │
+#              └─────────────┬──────────────┘                            │
+#                            │◄──────────────────────────────────────────┘
+#                  ┌─────────▼───────────────────────────────┐
+#                  │  plexus-frr  (iBGP route reflector)     │
+#                  │  AS 64512                               │
+#                  │  eth0: 192.168.11.4 (plexus-hub net)    │
+#                  │  eth1: 192.168.12.4 (plexus-spoke-1 net)│
+#                  │  eth2: 192.168.13.4 (plexus-spoke-2 net)│
+#                  └─────────────────────────────────────────┘
+#
+# EVPN overlay — AND "production" UDN subnets (across all clusters via EVPN):
+#   web  10.0.1.0/24   Public   — intra-domain routing, BGP export via RouteAdvertisements
+#   app  10.0.10.0/24  Private  — intra-domain routing, no BGP export
+#   db   10.0.20.0/24  Isolated — no routing outside subnet
+#
+# Key design choices:
+#   VTEP IPs        172.18.0.x (kind bridge) — nodes connect to kind BEFORE OVN-K deploys
+#                   so OVN-K bridges eth1 as breth1 (kind interface) and allocates
+#                   ovn-encap-ip from 172.18.0.0/16; Geneve src matches outgoing interface
+#   FRR BGP         frr-k8s on each cluster peers with FRR at FRR's per-cluster IP (eth0),
+#                   not breth1 — so BGP sessions use the correct cluster Docker network
+#   Spoke Secrets   kind bridge IP (172.18.0.x) + insecure-skip-tls-verify — OVN-K pod
+#                   traffic exits via breth1 which has OVS flows for 172.18.0.0/16;
+#                   kind IP is not in the spoke API cert SAN so TLS check is skipped
+#   OVN-K API URL   per-cluster IP (cert-valid) — used by helm_install_ovnk only
 
 set -euo pipefail
 
@@ -44,23 +109,85 @@ done
 
 HUB_KUBECONFIG="${HOME}/${HUB_NAME}.conf"
 
-spoke_name() { echo "${SPOKE_PREFIX}-${1}"; }
-spoke_kubeconfig() { echo "${HOME}/$(spoke_name "$1").conf"; }
-cluster_network() { echo "plexus-${1}"; }
+spoke_name()      { echo "${SPOKE_PREFIX}-${1}"; }
+spoke_kubeconfig(){ echo "${HOME}/$(spoke_name "$1").conf"; }
 
 all_cluster_names() {
   echo "$HUB_NAME"
+  for ((i = 1; i <= SPOKE_COUNT; i++)); do spoke_name "$i"; done
+}
+
+# ── Cross-cluster routing ─────────────────────────────────────────────────────
+#
+# Adds static routes on every cluster's nodes so they can reach all other
+# clusters' Docker subnets, and inserts iptables DOCKER-USER ACCEPT rules on
+# the host so the Docker daemon forwards those packets.
+#
+setup_inter_cluster_routing() {
+  echo "Configuring cross-cluster routing between cluster Docker networks..."
+
+  # Collect each cluster's Docker subnet.
+  # NOTE: per-cluster Docker gateways (eth0) are NOT used for routing.
+  # OVN-K bridges the kind interface as breth1 and uses it as its uplink for
+  # all outgoing traffic (including EVPN Geneve tunnels). Routes must go via
+  # the kind bridge gateway so they land on breth1; routes on eth0 are
+  # invisible to OVN-K's outgoing pipeline.
+  declare -a CLUSTER_NAMES CLUSTER_SUBNETS
+  CLUSTER_NAMES=("$HUB_NAME")
+  compute_cidrs "$CIDR_BASE"
+  CLUSTER_SUBNETS=("$DOCKER_NETWORK_SUBNET")
   for ((i = 1; i <= SPOKE_COUNT; i++)); do
-    spoke_name "$i"
+    CLUSTER_NAMES+=("$(spoke_name "$i")")
+    compute_cidrs "$((CIDR_BASE + i))"
+    CLUSTER_SUBNETS+=("$DOCKER_NETWORK_SUBNET")
+  done
+
+  # Read kind bridge gateway dynamically so we aren't broken if the network
+  # was created with a different subnet by a previous KIND installation.
+  local kind_gw kind_subnet
+  kind_gw=$($OCI_BIN network inspect kind --format '{{(index .IPAM.Config 0).Gateway}}')
+  kind_subnet=$($OCI_BIN network inspect kind --format '{{(index .IPAM.Config 0).Subnet}}')
+
+  # Add routes via the kind bridge gateway on every cluster's nodes.
+  for ((c = 0; c < ${#CLUSTER_NAMES[@]}; c++)); do
+    local cname="${CLUSTER_NAMES[$c]}"
+    for ((o = 0; o < ${#CLUSTER_NAMES[@]}; o++)); do
+      [ "$o" -eq "$c" ] && continue
+      local other_subnet="${CLUSTER_SUBNETS[$o]}"
+      echo "  ${cname}: route ${other_subnet} via ${kind_gw} (kind bridge)"
+      for node in $(kind get nodes --name "$cname"); do
+        $OCI_BIN exec "$node" ip route replace "$other_subnet" via "$kind_gw" 2>/dev/null || true
+      done
+    done
+  done
+
+  # Allow the Docker host to forward between:
+  #   - cluster ↔ cluster  (FRR BGP peering over per-cluster networks)
+  #   - kind    ↔ cluster  (OVN-K Geneve tunnels sourced from 172.18.x.x)
+  echo "  Configuring host iptables DOCKER-USER forwarding rules..."
+  local all_subnets=("$kind_subnet" "${CLUSTER_SUBNETS[@]}")
+  for ((i = 0; i < ${#all_subnets[@]}; i++)); do
+    for ((j = i + 1; j < ${#all_subnets[@]}; j++)); do
+      _src="${all_subnets[$i]}"; _dst="${all_subnets[$j]}"
+      for pair in "$_src:$_dst" "$_dst:$_src"; do
+        _s="${pair%%:*}"; _d="${pair##*:}"
+        sudo iptables -C DOCKER-USER -s "$_s" -d "$_d" -j ACCEPT 2>/dev/null || \
+          sudo iptables -I DOCKER-USER -s "$_s" -d "$_d" -j ACCEPT || \
+          echo "  Warning: could not add iptables rule ($_s -> $_d); run manually:" \
+               "sudo iptables -I DOCKER-USER -s $_s -d $_d -j ACCEPT"
+      done
+    done
   done
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 if [ "$DELETE" = true ]; then
   echo "=== Deleting all Plexus clusters ==="
   for name in $(all_cluster_names); do
     kind delete cluster --name "$name" 2>/dev/null || true
     rm -f "${HOME}/${name}.conf"
-    delete_docker_network "$(cluster_network "$name")"
+    delete_docker_network "$name"
   done
   cleanup_external_frr
   echo "Done."
@@ -70,6 +197,68 @@ fi
 resolve_ovn_kubernetes_path
 echo "Using OVN-Kubernetes from: ${OVN_KUBERNETES_PATH}"
 echo "Hub: ${HUB_NAME}, Spokes: ${SPOKE_COUNT}, Workers/cluster: ${WORKERS}"
+echo ""
+
+CIDR_BASE="${CIDR_BASE:-1}"
+
+echo "=== Pre-flight: iptables inter-cluster routing ==="
+# Compute every subnet pair that requires a DOCKER-USER ACCEPT rule:
+#   - cluster ↔ cluster  (FRR BGP peering over per-cluster Docker networks)
+#   - kind    ↔ cluster  (OVN-K Geneve tunnels sourced from breth1/172.18.x.x)
+# Rules must exist before cross-cluster traffic flows, even if the Docker
+# networks haven't been created yet.
+_cluster_subnets=()
+compute_cidrs "$CIDR_BASE"
+_cluster_subnets+=("$DOCKER_NETWORK_SUBNET")
+for ((i = 1; i <= SPOKE_COUNT; i++)); do
+  compute_cidrs "$((CIDR_BASE + i))"
+  _cluster_subnets+=("$DOCKER_NETWORK_SUBNET")
+done
+
+# Read the kind subnet dynamically; fall back to the default if the network
+# doesn't exist yet (it will be created in Phase 2 with this subnet).
+_kind_subnet="172.18.0.0/16"
+if $OCI_BIN network inspect kind &>/dev/null 2>&1; then
+  _kind_subnet=$($OCI_BIN network inspect kind \
+    --format '{{(index .IPAM.Config 0).Subnet}}' 2>/dev/null || echo "172.18.0.0/16")
+fi
+
+_preflight_subnets=("$_kind_subnet" "${_cluster_subnets[@]}")
+
+# Build the list of rules that must exist (one per ordered subnet pair).
+_missing_rules=()
+for ((i = 0; i < ${#_preflight_subnets[@]}; i++)); do
+  for ((j = i + 1; j < ${#_preflight_subnets[@]}; j++)); do
+    _src="${_preflight_subnets[$i]}"; _dst="${_preflight_subnets[$j]}"
+    sudo -n iptables -C DOCKER-USER -s "$_src" -d "$_dst" -j ACCEPT 2>/dev/null || \
+      _missing_rules+=("sudo iptables -I DOCKER-USER -s $_src -d $_dst -j ACCEPT")
+    sudo -n iptables -C DOCKER-USER -s "$_dst" -d "$_src" -j ACCEPT 2>/dev/null || \
+      _missing_rules+=("sudo iptables -I DOCKER-USER -s $_dst -d $_src -j ACCEPT")
+  done
+done
+
+if [ "${#_missing_rules[@]}" -eq 0 ]; then
+  echo "  iptables DOCKER-USER rules already present — OK"
+elif sudo -n iptables -L DOCKER-USER &>/dev/null 2>&1; then
+  echo "  Rules will be added automatically (sudo access confirmed)"
+else
+  echo ""
+  echo "ERROR: iptables DOCKER-USER rules for inter-cluster routing are missing"
+  echo "       and passwordless sudo for iptables is not configured."
+  echo ""
+  echo "Fix option 1 — grant passwordless sudo for iptables (recommended):"
+  printf '  sudo tee /etc/sudoers.d/plexus-iptables <<EOF\n'
+  printf '  %s ALL=(ALL) NOPASSWD: /usr/sbin/iptables\n' "${USER}"
+  printf '  EOF\n'
+  echo ""
+  echo "Fix option 2 — add the rules manually before running this script:"
+  for rule in "${_missing_rules[@]}"; do
+    echo "  ${rule}"
+  done
+  echo ""
+  exit 1
+fi
+unset _cluster_subnets _kind_subnet _preflight_subnets _missing_rules
 echo ""
 
 echo "=== Phase 1: Images ==="
@@ -84,13 +273,16 @@ fi
 echo ""
 
 echo "=== Phase 2: Creating KIND clusters ==="
+# The kind bridge network must exist before nodes connect to it (Phase 4).
+create_docker_network kind 172.18.0.0/16
 
 create_cluster() {
   local name=$1 index=$2 kubeconfig=$3 network=$4
 
   compute_cidrs "$index"
   create_docker_network "$network" "$DOCKER_NETWORK_SUBNET"
-  echo "--- Cluster ${name} (index=${index}): pods=${POD_CIDR} svcs=${SVC_CIDR} net=${network} ---"
+  echo "--- Cluster ${name} (index=${index}): pods=${POD_CIDR} svcs=${SVC_CIDR}" \
+       "net=${network} (${DOCKER_NETWORK_SUBNET}) ---"
 
   if kind get clusters 2>/dev/null | grep -qx "$name"; then
     echo "Cluster ${name} already exists, skipping creation"
@@ -105,24 +297,45 @@ create_cluster() {
 
   load_ovn_image "$name"
   configure_node_sysctl "$name"
+
+  # Connect every node to the kind bridge before OVN-K is deployed so that
+  # OVN-K bridges the kind interface (breth1) as its uplink. This makes the
+  # kind bridge IPs the ovn-encap-ip, which keeps Geneve tunnel source and
+  # outgoing interface IPs consistent. The VTEP CIDR is set to the kind
+  # bridge subnet accordingly (see Phase 5).
+  echo "Connecting ${name} nodes to kind bridge..."
+  for node in $(kind get nodes --name "$name"); do
+    if $OCI_BIN inspect "$node" \
+        --format "{{range \$k,\$v := .NetworkSettings.Networks}}{{\$k}} {{end}}" \
+        2>/dev/null | grep -qw "kind"; then
+      echo "  ${node}: already connected to kind bridge"
+    else
+      $OCI_BIN network connect kind "$node"
+      echo "  ${node}: connected to kind bridge"
+    fi
+  done
 }
 
-CIDR_BASE="${CIDR_BASE:-1}"
-HUB_NETWORK=$(cluster_network "$HUB_NAME")
+HUB_NETWORK="$HUB_NAME"
 create_cluster "$HUB_NAME" "$CIDR_BASE" "$HUB_KUBECONFIG" "$HUB_NETWORK"
 for ((i = 1; i <= SPOKE_COUNT; i++)); do
-  create_cluster "$(spoke_name "$i")" "$((CIDR_BASE + i))" "$(spoke_kubeconfig "$i")" "$(cluster_network "$(spoke_name "$i")")"
+  create_cluster "$(spoke_name "$i")" "$((CIDR_BASE + i))" \
+    "$(spoke_kubeconfig "$i")" "$(spoke_name "$i")"
 done
+echo ""
+
+echo "=== Phase 2b: Cross-cluster routing ==="
+setup_inter_cluster_routing
 echo ""
 
 echo "=== Phase 3: External FRR route reflector ==="
 
 # Deploy FRR on the hub's Docker network, then connect it to each spoke
-# network so it can peer with all cluster nodes across L2 domains.
+# network so it can peer with all cluster nodes across their L2 domains.
 deploy_external_frr "$HUB_KUBECONFIG"
 
 for ((i = 1; i <= SPOKE_COUNT; i++)); do
-  spoke_net=$(cluster_network "$(spoke_name "$i")")
+  spoke_net=$(spoke_name "$i")
   connect_frr_to_network "$spoke_net"
   spoke_ips=()
   while IFS= read -r ip; do
@@ -135,37 +348,40 @@ echo ""
 echo "=== Phase 4: OVN-Kubernetes + FRR-K8s ==="
 
 deploy_ovnk_to_cluster() {
-  local name=$1 index=$2 kubeconfig=$3 network=$4
+  local name=$1 index=$2 kubeconfig=$3 network=$4 frr_network=$5
 
   compute_cidrs "$index"
   install_frr_k8s "$kubeconfig"
   helm_install_ovnk "$name" "$kubeconfig" "$network"
   wait_for_ovnk "$kubeconfig"
-  configure_frr_k8s_peering "$kubeconfig" "$name"
+  # frr_network is the cluster's own Docker network — FRR's IP on that network
+  # is what frr-k8s nodes must use as their BGP neighbor address.
+  configure_frr_k8s_peering "$kubeconfig" "$name" "$frr_network"
 }
 
-deploy_ovnk_to_cluster "$HUB_NAME" "$CIDR_BASE" "$HUB_KUBECONFIG" "$HUB_NETWORK"
+deploy_ovnk_to_cluster "$HUB_NAME" "$CIDR_BASE" "$HUB_KUBECONFIG" "$HUB_NETWORK" "$HUB_NETWORK"
 for ((i = 1; i <= SPOKE_COUNT; i++)); do
-  deploy_ovnk_to_cluster "$(spoke_name "$i")" "$((CIDR_BASE + i))" "$(spoke_kubeconfig "$i")" "$(cluster_network "$(spoke_name "$i")")"
+  deploy_ovnk_to_cluster "$(spoke_name "$i")" "$((CIDR_BASE + i))" \
+    "$(spoke_kubeconfig "$i")" "$(spoke_name "$i")" "$(spoke_name "$i")"
 done
 echo ""
 
 echo "=== Phase 5: Plexus controller ==="
-# VTEP CIDRs must cover all cluster Docker network subnets so EVPN
-# tunnels can be established across L2 domains.
-VTEP_CIDRS=()
-compute_cidrs "$CIDR_BASE"
-VTEP_CIDRS+=("$DOCKER_NETWORK_SUBNET")
-for ((i = 1; i <= SPOKE_COUNT; i++)); do
-  compute_cidrs "$((CIDR_BASE + i))"
-  VTEP_CIDRS+=("$DOCKER_NETWORK_SUBNET")
-done
-deploy_plexus_controller "$HUB_NAME" "$HUB_KUBECONFIG" "${VTEP_CIDRS[@]}"
+# VTEP CIDR is the kind bridge subnet. OVN-K bridges the kind interface
+# (breth1) as its uplink — nodes are connected to kind before OVN-K deploys
+# so OVN-K selects it. The ovn-encap-ip is therefore from 172.18.0.0/16,
+# which matches the actual outgoing interface, enabling correct EVPN tunnels.
+KIND_SUBNET=$(docker_network_cidr kind)
+deploy_plexus_controller "$HUB_NAME" "$HUB_KUBECONFIG" "$KIND_SUBNET"
 echo ""
 
 echo "=== Phase 6: Spoke cluster Secrets ==="
+# Use the kind bridge IP for the spoke API URL. OVN-K uses breth1 (kind bridge)
+# as its uplink, so pod traffic to the spoke API exits via the kind bridge.
+# insecure-skip-tls-verify is set in create_spoke_secret because the kind
+# bridge IP is not in the spoke API server's TLS cert SAN.
 for ((i = 1; i <= SPOKE_COUNT; i++)); do
-  create_spoke_secret "$HUB_KUBECONFIG" "$(spoke_name "$i")" "$i" "$(cluster_network "$(spoke_name "$i")")"
+  create_spoke_secret "$HUB_KUBECONFIG" "$(spoke_name "$i")" "$i" kind
 done
 echo ""
 
