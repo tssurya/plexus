@@ -34,10 +34,12 @@ mkdir -p "${DEST}"
 # userdefinednetwork/v1  → ClusterUserDefinedNetwork (CUDN) and UserDefinedNetwork (UDN)
 # routeadvertisements/v1 → RouteAdvertisements
 # vtep/v1                → VTEP
+
+# Remove stale CRD files that are no longer in the allowlist to prevent outdated schemas.
+rm -f "${DEST}"/*.yaml
+
 go tool controller-gen crd \
-  paths="github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/userdefinednetwork/v1" \
-  paths="github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/routeadvertisements/v1" \
-  paths="github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/vtep/v1" \
+  'paths={github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/userdefinednetwork/v1,github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/routeadvertisements/v1,github.com/ovn-kubernetes/ovn-kubernetes/go-controller/pkg/crd/vtep/v1}' \
   output:crd:dir="${DEST}"
 
 echo "Done. Files written to ${DEST}/:"
