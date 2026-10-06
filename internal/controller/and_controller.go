@@ -92,7 +92,6 @@ func (r *ANDReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	noSubnets := len(and.Spec.Subnets) == 0
-
 	result, err := r.Backend.Reconcile(ctx, and)
 	if err != nil {
 		meta.SetStatusCondition(&and.Status.Conditions, metav1.Condition{
