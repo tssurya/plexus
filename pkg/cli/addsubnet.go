@@ -13,7 +13,7 @@ import (
 	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 )
 
-func newAddSubnetCommand() *cobra.Command {
+func newAddSubnetCommand(clientFn func() (client.Client, error)) *cobra.Command {
 	var cidrs []string
 	var subnetType string
 	var clusterSelector []string
@@ -29,7 +29,8 @@ Examples:
   plexus add-subnet production backend --cidr 10.0.2.0/24
   plexus add-subnet production dual --cidr 10.0.3.0/24 --cidr fd00::3/64 --type Private
   plexus add-subnet production zoned --cidr 10.0.4.0/24 --cluster-selector region=eu-west --node-selector topology.kubernetes.io/zone=rack-a`,
-		Args: cobra.ExactArgs(2),
+		Args:         cobra.ExactArgs(2),
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ndName := args[0]
 			subnetName := args[1]
@@ -62,7 +63,7 @@ Examples:
 				}
 			}
 
-			c, err := getClient()
+			c, err := clientFn()
 			if err != nil {
 				return err
 			}

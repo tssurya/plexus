@@ -14,7 +14,7 @@ import (
 	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 )
 
-func newDeleteSubnetCommand() *cobra.Command {
+func newDeleteSubnetCommand(clientFn func() (client.Client, error)) *cobra.Command {
 	var yes bool
 
 	cmd := &cobra.Command{
@@ -27,7 +27,8 @@ associated with the subnet.
 Examples:
   plexus delete-subnet production web
   plexus delete-subnet production web --yes`,
-		Args: cobra.ExactArgs(2),
+		Args:         cobra.ExactArgs(2),
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ndName := args[0]
 			subnetName := args[1]
@@ -49,7 +50,7 @@ Examples:
 				}
 			}
 
-			c, err := getClient()
+			c, err := clientFn()
 			if err != nil {
 				return err
 			}

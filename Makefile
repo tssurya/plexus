@@ -40,6 +40,9 @@ verify-codegen: generate ## Verify generated files are up to date
 		exit 1; \
 	fi
 
+ENVTEST_K8S_VERSION ?= 1.33.x
+ENVTEST_ASSETS_DIR  ?= $(shell pwd)/bin/k8s
+
 ##@ Development
 
 .PHONY: fmt
@@ -62,9 +65,14 @@ lint-api: ## Run kube-api-linter on API types
 	fi
 	bin/golangci-lint-kube-api-linter run --config hack/lint/.golangci-api.yml ./api/...
 
-.PHONY: test
-test: ## Run unit tests
-	go test ./... -coverprofile cover.out -race
+.PHONY: check test
+check test: ## Run all unit tests. Downloads envtest kube-apiserver/etcd binaries on first run.
+	KUBEBUILDER_ASSETS="$$(go tool setup-envtest use $(ENVTEST_K8S_VERSION) --bin-dir $(ENVTEST_ASSETS_DIR) -p path)" \
+	go test ./api/... ./internal/... ./pkg/cli/... -coverprofile cover.out -race -v
+
+.PHONY: update-ovnk-crds
+update-ovnk-crds: ## Generate OVN-k CRD YAMLs for envtest from the go.mod-pinned module
+	hack/update-ovnk-crds.sh
 
 ##@ Build
 
