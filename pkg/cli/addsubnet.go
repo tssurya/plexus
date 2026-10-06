@@ -43,7 +43,7 @@ Examples:
 				return err
 			}
 
-			var az *v1beta1.AvailabilityZone
+			var az v1beta1.AvailabilityZone
 			if len(clusterSelector) > 0 || len(nodeSelector) > 0 {
 				csLabels, err := parseKeyValuePairs(clusterSelector)
 				if err != nil {
@@ -56,7 +56,7 @@ Examples:
 				if len(csLabels) == 0 {
 					return fmt.Errorf("--cluster-selector is required when --node-selector is specified")
 				}
-				az = &v1beta1.AvailabilityZone{
+				az = v1beta1.AvailabilityZone{
 					ClusterSelector: metav1.LabelSelector{MatchLabels: csLabels},
 					NodeSelector:    nsLabels,
 				}

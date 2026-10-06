@@ -43,7 +43,7 @@ func desiredLabels(and *v1beta1.AdministrativeNetworkDomain, subnet *v1beta1.Sub
 // nodeSelectorAnnotationValue builds a deterministic, sorted "key=value" annotation
 // from the AZ NodeSelector map. Returns empty string if no selector is set.
 func nodeSelectorAnnotationValue(subnet *v1beta1.Subnet) string {
-	if subnet.AvailabilityZone == nil || len(subnet.AvailabilityZone.NodeSelector) == 0 {
+	if len(subnet.AvailabilityZone.NodeSelector) == 0 {
 		return ""
 	}
 

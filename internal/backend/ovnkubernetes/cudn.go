@@ -64,7 +64,8 @@ func (b *OVNKubernetesBackend) buildCUDN(
 			VNI: int32(vnis.MACVRF),
 		},
 	}
-	if subnet.Type != v1beta1.SubnetTypeIsolated && vnis.IPVRF != 0 {
+	subnetType := subnet.Type
+	if subnetType != v1beta1.SubnetTypeIsolated && vnis.IPVRF != 0 {
 		evpnConfig.IPVRF = &udnv1.VRFConfig{
 			VNI:         int32(vnis.IPVRF),
 			RouteTarget: udnv1.RouteTargetString(domainRouteTarget(and.Name)),
@@ -77,7 +78,7 @@ func (b *OVNKubernetesBackend) buildCUDN(
 			Labels: map[string]string{
 				labelNetworkDomain: and.Name,
 				labelSubnet:        subnet.Name,
-				labelSubnetType:    string(subnet.Type),
+				labelSubnetType:    string(subnetType),
 			},
 		},
 		Spec: udnv1.ClusterUserDefinedNetworkSpec{

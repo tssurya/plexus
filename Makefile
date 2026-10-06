@@ -66,7 +66,12 @@ lint-api: bin/golangci-lint ## Run kube-api-linter on API types
 	   [ tools/.custom-gcl.yml -nt bin/golangci-lint-kube-api-linter ]; then \
 		echo "Building kube-api-linter..."; \
 		mkdir -p bin; \
-		cd tools && $(CURDIR)/$(GOLANGCI_LINT) custom; \
+		case "$(GOLANGCI_LINT)" in \
+			/*) ABS_LINT="$(GOLANGCI_LINT)" ;; \
+			*/*) ABS_LINT="$(CURDIR)/$(GOLANGCI_LINT)" ;; \
+			*) ABS_LINT=$$(command -v $(GOLANGCI_LINT)) ;; \
+		esac; \
+		cd tools && $$ABS_LINT custom; \
 	fi
 	bin/golangci-lint-kube-api-linter run --config hack/lint/.golangci-api.yml ./api/...
 

@@ -11,11 +11,29 @@ linters:
         type: module
         description: Kube API Linter lints Kube like APIs based on API conventions and best practices.
         settings:
-          linters: {}
-          lintersConfig: {}
+          linters:
+            disable:
+              - nonpointerstructs
+          lintersConfig:
+            optionalfields:
+              pointers:
+                preference: WhenRequired
+            conditions:
+              usePatchStrategy: Ignore
+              useProtobuf: Ignore
 
   exclusions:
     rules:
       - linters:
           - kubeapilinter
         path-except: "api/"
+      # metav1.LabelSelector is an external struct whose sub-fields all carry omitempty,
+      # so the requiredfields linter sees {} as a valid zero value even though the XValidation
+      # rule on each field rejects empty selectors at admission. MinProperties cannot be
+      # applied to struct types by controller-gen, so we suppress here per-field.
+      - linters:
+          - kubeapilinter
+        text: "field AvailabilityZone\\.ClusterSelector has a valid zero value"
+      - linters:
+          - kubeapilinter
+        text: "field OVNKubernetesConfig\\.FRRConfigurationSelector has a valid zero value"
