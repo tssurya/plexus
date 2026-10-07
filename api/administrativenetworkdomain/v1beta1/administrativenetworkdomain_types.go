@@ -21,15 +21,18 @@ import (
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:validation:XValidation:rule="!has(self.spec.subnets) || self.spec.subnets.all(s, size(self.metadata.name) + size(s.name) + 1 <= 63)",message="combined <and-name>-<subnet-name> must not exceed 63 characters (Kubernetes namespace name limit)"
 type AdministrativeNetworkDomain struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+	// metadata is the standard object metadata.
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// +kubebuilder:validation:Required
+	// spec defines the desired state of the AdministrativeNetworkDomain.
 	// +required
-	Spec AdministrativeNetworkDomainSpec `json:"spec"`
+	Spec AdministrativeNetworkDomainSpec `json:"spec,omitzero"`
 
+	// status defines the observed state of the AdministrativeNetworkDomain.
 	// +optional
-	Status AdministrativeNetworkDomainStatus `json:"status,omitempty"`
+	Status AdministrativeNetworkDomainStatus `json:"status,omitempty"` //nolint:kubeapilinter
 }
 
 // AdministrativeNetworkDomainSpec defines the desired state of an AdministrativeNetworkDomain.
@@ -45,10 +48,11 @@ type AdministrativeNetworkDomainSpec struct {
 	// later by another (e.g. networking). The controller will not provision
 	// any network resources until at least one subnet is added.
 	//
-	// +optional
+	// +kubebuilder:validation:MinItems=0
 	// +kubebuilder:validation:MaxItems=100
 	// +listType=map
 	// +listMapKey=name
+	// +required
 	Subnets []Subnet `json:"subnets,omitempty"`
 }
 
@@ -79,19 +83,18 @@ type Subnet struct {
 	// The combined "<networkdomain>-<subnet>" must respect Kubernetes
 	// namespace name limits (63 characters, DNS label).
 	//
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="name is immutable once set"
 	// +required
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
 
 	// cidrs defines the IP address range(s) for this subnet.
 	// At most two CIDRs may be specified: one IPv4 and one IPv6
 	// for dual-stack. If a single CIDR is provided, the subnet is
 	// single-stack (v4 or v6).
 	//
-	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=2
 	// +listType=atomic
@@ -99,7 +102,7 @@ type Subnet struct {
 	//
 	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || (self.exists(c, c.contains(':')) && self.exists(c, !c.contains(':')))",message="when two CIDRs are specified they must be from different address families (one IPv4, one IPv6)"
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="cidrs is immutable once set"
-	CIDRs []CIDR `json:"cidrs"`
+	CIDRs []CIDR `json:"cidrs,omitempty"`
 
 	// type defines the subnet type which determines its external
 	// connectivity and the resources the Plexus controller provisions:
@@ -117,9 +120,9 @@ type Subnet struct {
 	// Defaults to Private if not specified.
 	//
 	// +optional
-	// +kubebuilder:default=Private
+	// +default="Private"
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="type is immutable once set"
-	Type SubnetType `json:"type,omitempty"`
+	Type *SubnetType `json:"type,omitempty"`
 
 	// availabilityZone optionally pins this subnet to a specific
 	// failure domain. It selects which clusters and which nodes
@@ -139,9 +142,8 @@ type AvailabilityZone struct {
 	// these labels against its cluster inventory. Only clusters whose
 	// labels satisfy the selector receive the resources for this subnet.
 	//
-	// +kubebuilder:validation:Required
 	// +required
-	ClusterSelector metav1.LabelSelector `json:"clusterSelector"`
+	ClusterSelector *metav1.LabelSelector `json:"clusterSelector,omitempty"`
 
 	// nodeSelector optionally restricts the subnet to nodes matching
 	// these labels within each target cluster. The Plexus controller
@@ -160,11 +162,12 @@ type AvailabilityZone struct {
 // AdministrativeNetworkDomainStatus defines the observed state of an AdministrativeNetworkDomain.
 type AdministrativeNetworkDomainStatus struct {
 	// conditions reports the status of AdministrativeNetworkDomain operations.
+	// +optional
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=type
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 // AdministrativeNetworkDomainList contains a list of AdministrativeNetworkDomain resources.

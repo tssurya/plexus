@@ -66,11 +66,6 @@ func main() {
 		setupLog.Error(err, "unable to fetch PlexusControllerConfig 'plexus'")
 		os.Exit(1)
 	}
-	if plexusConfig.Spec.OVNKubernetes == nil {
-		setupLog.Error(nil, "PlexusControllerConfig 'plexus' is missing ovnKubernetes configuration")
-		os.Exit(1)
-	}
-
 	// TODO: enable leader election by default for production deployments.
 	// Currently disabled unless --leader-elect is passed. Multi-replica
 	// deployments MUST use leader election to prevent split-brain VNI
@@ -94,6 +89,13 @@ func main() {
 		Log:       ctrl.Log,
 	})
 
+	// TODO: Currently only OVN-K backend is supported. When multiple
+	// backends are supported per OKEP, this check should be updated to 
+	// validate based on the configured backend
+	if plexusConfig.Spec.OVNKubernetes == nil {
+		setupLog.Error(nil, "ovnKubernetes configuration is required in PlexusControllerConfig 'plexus'")
+		os.Exit(1)
+	}
 	backend := ovnkubernetes.New(mgr.GetClient(), ctrl.Log, plexusConfig.Spec.OVNKubernetes, inventory)
 
 	if err := (&controller.ANDReconciler{

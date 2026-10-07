@@ -57,7 +57,7 @@ Examples:
 					return fmt.Errorf("--cluster-selector is required when --node-selector is specified")
 				}
 				az = &v1beta1.AvailabilityZone{
-					ClusterSelector: metav1.LabelSelector{MatchLabels: csLabels},
+					ClusterSelector: &metav1.LabelSelector{MatchLabels: csLabels},
 					NodeSelector:    nsLabels,
 				}
 			}
@@ -81,7 +81,7 @@ Examples:
 			and.Spec.Subnets = append(and.Spec.Subnets, v1beta1.Subnet{
 				Name:             subnetName,
 				CIDRs:            toCIDRs(cidrs),
-				Type:             st,
+				Type:             &st,
 				AvailabilityZone: az,
 			})
 

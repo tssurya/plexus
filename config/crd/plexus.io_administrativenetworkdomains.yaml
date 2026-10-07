@@ -52,8 +52,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: AdministrativeNetworkDomainSpec defines the desired state
-              of an AdministrativeNetworkDomain.
+            description: spec defines the desired state of the AdministrativeNetworkDomain.
             properties:
               subnets:
                 description: |-
@@ -183,6 +182,7 @@ spec:
                         The combined "<networkdomain>-<subnet>" must respect Kubernetes
                         namespace name limits (63 characters, DNS label).
                       maxLength: 63
+                      minLength: 1
                       pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
                       type: string
                       x-kubernetes-validations:
@@ -219,14 +219,16 @@ spec:
                   - name
                   type: object
                 maxItems: 100
+                minItems: 0
                 type: array
                 x-kubernetes-list-map-keys:
                 - name
                 x-kubernetes-list-type: map
+            required:
+            - subnets
             type: object
           status:
-            description: AdministrativeNetworkDomainStatus defines the observed state
-              of an AdministrativeNetworkDomain.
+            description: status defines the observed state of the AdministrativeNetworkDomain.
             properties:
               conditions:
                 description: conditions reports the status of AdministrativeNetworkDomain
