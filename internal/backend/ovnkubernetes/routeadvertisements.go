@@ -20,8 +20,9 @@ func raName(and *v1beta1.AdministrativeNetworkDomain) string {
 
 func (b *OVNKubernetesBackend) reconcileRouteAdvertisements(ctx context.Context, and *v1beta1.AdministrativeNetworkDomain, cl client.Client) error {
 	hasEVPN := false
-	for i := range and.Spec.Subnets {
-		if and.Spec.Subnets[i].Type != v1beta1.SubnetTypeIsolated {
+	subnets := and.Spec.Subnets
+	for i := range subnets {
+		if subnets[i].Type != v1beta1.SubnetTypeIsolated {
 			hasEVPN = true
 			break
 		}

@@ -52,8 +52,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: AdministrativeNetworkDomainSpec defines the desired state
-              of an AdministrativeNetworkDomain.
+            description: spec defines the desired state of the AdministrativeNetworkDomain.
             properties:
               subnets:
                 description: |-
@@ -63,10 +62,8 @@ spec:
                   ClusterUserDefinedNetwork. Subnets within the same AdministrativeNetworkDomain can
                   have different topologies and transports.
 
-                  An AND with no subnets is valid; this supports workflows where the
-                  domain is created by one team (e.g. platform) and subnets are added
-                  later by another (e.g. networking). The controller will not provision
-                  any network resources until at least one subnet is added.
+                  At least one subnet is required. To add or remove subnets after creation,
+                  patch or replace the subnets list.
                 items:
                   description: |-
                     Subnet defines a subnet within the AdministrativeNetworkDomain. The Plexus controller
@@ -133,6 +130,11 @@ spec:
                               type: object
                           type: object
                           x-kubernetes-map-type: atomic
+                          x-kubernetes-validations:
+                          - message: clusterSelector must specify at least one matchLabel
+                              or matchExpression
+                            rule: size(self.matchLabels) > 0 || size(self.matchExpressions)
+                              > 0
                         nodeSelector:
                           additionalProperties:
                             type: string
@@ -183,6 +185,7 @@ spec:
                         The combined "<networkdomain>-<subnet>" must respect Kubernetes
                         namespace name limits (63 characters, DNS label).
                       maxLength: 63
+                      minLength: 1
                       pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
                       type: string
                       x-kubernetes-validations:
@@ -219,14 +222,17 @@ spec:
                   - name
                   type: object
                 maxItems: 100
+                minItems: 1
                 type: array
                 x-kubernetes-list-map-keys:
                 - name
                 x-kubernetes-list-type: map
+            required:
+            - subnets
             type: object
           status:
-            description: AdministrativeNetworkDomainStatus defines the observed state
-              of an AdministrativeNetworkDomain.
+            description: status defines the observed state of the AdministrativeNetworkDomain.
+            minProperties: 1
             properties:
               conditions:
                 description: conditions reports the status of AdministrativeNetworkDomain

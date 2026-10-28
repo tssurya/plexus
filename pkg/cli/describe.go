@@ -39,11 +39,12 @@ func newDescribeCommand() *cobra.Command {
 				formatDuration(time.Since(and.CreationTimestamp.Time))); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(out, "Subnets:      %d\n", len(and.Spec.Subnets)); err != nil {
+			subnets := and.Spec.Subnets
+			if _, err := fmt.Fprintf(out, "Subnets:      %d\n", len(subnets)); err != nil {
 				return err
 			}
 
-			if len(and.Spec.Subnets) > 0 {
+			if len(subnets) > 0 {
 				if _, err := fmt.Fprintln(out); err != nil {
 					return err
 				}
@@ -51,7 +52,7 @@ func newDescribeCommand() *cobra.Command {
 				if _, err := fmt.Fprintln(w, "  SUBNET\tCIDRS\tTYPE\tAVAILABILITY ZONE"); err != nil {
 					return err
 				}
-				for _, s := range and.Spec.Subnets {
+				for _, s := range subnets {
 					if _, err := fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
 						s.Name,
 						cidrStrings(s.CIDRs),
@@ -96,15 +97,16 @@ func newDescribeCommand() *cobra.Command {
 	}
 }
 
-func formatAZ(az *v1beta1.AvailabilityZone) string {
-	if az == nil {
+func formatAZ(az v1beta1.AvailabilityZone) string {
+	cs := az.ClusterSelector
+	if len(cs.MatchLabels) == 0 && len(cs.MatchExpressions) == 0 {
 		return "<none>"
 	}
 
 	var parts []string
 
-	if len(az.ClusterSelector.MatchLabels) > 0 {
-		for k, v := range az.ClusterSelector.MatchLabels {
+	if len(cs.MatchLabels) > 0 {
+		for k, v := range cs.MatchLabels {
 			parts = append(parts, fmt.Sprintf("cluster(%s=%s)", k, v))
 		}
 	}
