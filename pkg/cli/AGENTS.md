@@ -20,9 +20,10 @@
   confirmation by default. Add `--yes` / `-y` flag to skip.
 - **Validation**: Use the shared helpers in `validate.go` (`validateCIDRs`,
   `validateSubnetType`). Validate client-side before making API calls.
-- **Kubeconfig**: Handled by persistent flags (`--kubeconfig`, `--context`)
-  on the root command. Use `getClient()` from `client.go` — do not create
-  clients directly.
+- **Kubeconfig & Testing**: Handled by persistent flags (`--kubeconfig`,
+  `--context`) on the root command. Commands accept a `ClientFactory` parameter
+  for dependency injection. Production uses `DefaultClientFactory` (wraps
+  `getClient()`); tests inject `fakeClientFn()` for testing without real API.
 - **Command naming**: Use Kubernetes verbs — `create`, `delete`, `describe`,
   `add-subnet`, `delete-subnet`. Not `remove`, `show`, `list`.
 - **Flag style**: Use `--flag-name` (kebab-case). Required flags use
