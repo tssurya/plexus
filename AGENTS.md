@@ -38,6 +38,77 @@ make install    # Install CRDs into the configured cluster
 make run        # Run controller locally
 ```
 
+## Unit Testing
+
+Framework: **Ginkgo v2 + Gomega**. Ginkgo is a library on top of `go test`,
+not a replacement — `make test`, `make check`, and `make unit` all run
+`go test ./... -race`. It is used for consistency with
+ovn-kubernetes/controller-runtime and for suite-level setup/teardown, async
+assertions, and table-driven specs. Ginkgo overhead is negligible; envtest
+startup and `-race` dominate the unit-test lane.
+
+**Layout**
+- One `suite_test.go` per package with `func TestX(t *testing.T)` calling
+  `RunSpecs`.
+- Specs live in `*_test.go` next to the code under test.
+- API type tests use an external `package v1beta1_test` so they only
+  exercise the exported API.
+- Fixtures are named `testX` and stay local to the package. Shared envtest
+  infrastructure lives in `internal/testutil`.
+- CLI fake-client helpers live in `pkg/cli/cli_test.go` and stay there; they
+  depend on `cliScheme` and `ClientFactory`. Do not move them into
+  `internal/testutil` — generic test infra must not depend on `pkg/cli` or
+  the API types (import cycle).
+
+**Test layers**
+- Pure logic (no envtest): VNI allocator, CIDR/label helpers, CLI
+  validation.
+- CLI/controller logic: controller-runtime fake client. CLI commands take
+  a `ClientFactory`; tests inject a fake.
+- API schema/admission/reconciler behavior: envtest.
+- Full cluster/CNI: kind/e2e, not unit tests.
+
+**Envtest**
+- `make test`/`make check` runs `setup-envtest` once and sets
+  `KUBEBUILDER_ASSETS`; binaries are cached in `bin/k8s`.
+- Each envtest-enabled package starts/stops its own kube-apiserver+etcd in
+  `BeforeSuite`/`AfterSuite`. This is deliberate: Go test packages are
+  separate test binaries that can run in parallel, and separate control
+  planes give isolation. Within a job, `go test -p` (default `GOMAXPROCS`)
+  caps concurrency.
+- Use `internal/testutil.StartEnvtest` with `ProjectCRDPaths()` for
+  Plexus-only suites and `CRDPaths()` when OVN-K CRDs are needed. Use
+  `internal/testscheme.AddAll` for the full scheme.
+- `internal/testutil` is module-wide but not importable outside the module.
+  Keep it generic and free of API types so in-package API tests can import
+  it without an import cycle.
+- Only use envtest when the test needs real API behavior: CRD
+  schema/CEL/defaulting, admission, status subresources, or watches.
+  Otherwise use the fake client or pure tests.
+- Envtest has no kube-controller-manager: namespaces do not finalize,
+  there is no owner-reference GC, scheduler, kubelet, or CNI. Use unique
+  names per spec and do not wait for namespace deletion.
+- Keep envtest suites few and grouped by API surface. If the count grows,
+  consolidate or shard packages across CI jobs; reduce `go test -p` only
+  as a memory-stability fallback.
+
+**Assertions and CLI**
+- Use `Eventually`/`Consistently` with explicit timeout/interval for
+  asynchronous reconciler behavior, and `GinkgoRecover` in goroutines
+  (e.g. `manager.Start`).
+- Do not assert on production constants for externally visible strings;
+  use literals or test-local constants.
+- Verify actual object state with the fake client, not just command output.
+
+**Code generation and test files**
+- `make generate` uses `bin/controller-gen`, installed from the `tools`
+  module; the pinned version lives in `tools/go.mod`.
+- controller-gen loads normal packages, not test variants, so `_test.go`
+  files are not included even when they live next to API types or
+  controllers. No special handling is needed; `make check`/`go test ./...`
+  still runs them. Keeping tests beside the API types they exercise is
+  common (e.g. Kubernetes API `core/v1/types_test.go`).
+
 ## Key Conventions
 
 - API group: `plexus.io/v1beta1`
