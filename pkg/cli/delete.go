@@ -12,13 +12,14 @@ import (
 	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 )
 
-func newDeleteCommand() *cobra.Command {
+func newDeleteCommand(clientFn ClientFactory) *cobra.Command {
 	var yes bool
 
 	cmd := &cobra.Command{
-		Use:   "delete <name>",
-		Short: "Delete an AdministrativeNetworkDomain and all its subnets",
-		Args:  cobra.ExactArgs(1),
+		Use:          "delete <name>",
+		Short:        "Delete an AdministrativeNetworkDomain and all its subnets",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
@@ -37,7 +38,7 @@ func newDeleteCommand() *cobra.Command {
 				}
 			}
 
-			c, err := getClient()
+			c, err := clientFn()
 			if err != nil {
 				return err
 			}
