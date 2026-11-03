@@ -172,7 +172,7 @@ var _ = Describe("root.go", func() {
 		cmd := NewRootCommand(clientFn)
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
-		cmd.SetArgs([]string{"create", "root-wired"})
+		cmd.SetArgs([]string{"create", "root-wired", "web", "--cidr", "10.0.1.0/24"})
 		Expect(cmd.Execute()).To(Succeed())
 
 		c, err := clientFn()
@@ -180,6 +180,8 @@ var _ = Describe("root.go", func() {
 		and := &v1beta1.AdministrativeNetworkDomain{}
 		Expect(c.Get(context.Background(), client.ObjectKey{Name: "root-wired"}, and)).To(Succeed(),
 			"root command must use the injected factory, not DefaultClientFactory")
+		Expect(and.Spec.Subnets).To(HaveLen(1))
+		Expect(and.Spec.Subnets[0].Name).To(Equal("web"))
 	})
 })
 
@@ -199,7 +201,7 @@ var _ = Describe("create command", func() {
 		clientFn := fakeClientFn()
 		cmd := newCreateCommand(clientFn)
 		cmd.SetOut(&buf)
-		cmd.SetArgs([]string{"my-network"})
+		cmd.SetArgs([]string{"my-network", "web", "--cidr", "10.0.1.0/24"})
 		Expect(cmd.Execute()).To(Succeed())
 		Expect(buf.String()).To(ContainSubstring("administrativenetworkdomain/my-network created"))
 
@@ -209,11 +211,14 @@ var _ = Describe("create command", func() {
 		and := &v1beta1.AdministrativeNetworkDomain{}
 		Expect(c.Get(context.Background(), client.ObjectKey{Name: "my-network"}, and)).To(Succeed())
 		Expect(and.Name).To(Equal("my-network"))
+		Expect(and.Spec.Subnets).To(HaveLen(1))
+		Expect(and.Spec.Subnets[0].Name).To(Equal("web"))
+		Expect(and.Spec.Subnets[0].CIDRs).To(Equal([]v1beta1.CIDR{"10.0.1.0/24"}))
 	})
 
 	It("returns an error when the client fails", func() {
 		cmd := newCreateCommand(errClientFn("no kubeconfig"))
-		cmd.SetArgs([]string{"my-network"})
+		cmd.SetArgs([]string{"my-network", "web", "--cidr", "10.0.1.0/24"})
 		Expect(cmd.Execute()).To(MatchError(ContainSubstring("no kubeconfig")))
 	})
 })
@@ -401,6 +406,7 @@ var _ = Describe("delete-subnet command", func() {
 	It("removes a subnet with --yes and prints confirmation", func() {
 		and := testAND("prod",
 			v1beta1.Subnet{Name: "web", CIDRs: []v1beta1.CIDR{"10.0.1.0/24"}, Type: v1beta1.SubnetTypePublic},
+			v1beta1.Subnet{Name: "app", CIDRs: []v1beta1.CIDR{"10.0.2.0/24"}, Type: v1beta1.SubnetTypePrivate},
 		)
 		var buf bytes.Buffer
 		clientFn := fakeClientFn(and)
@@ -415,12 +421,14 @@ var _ = Describe("delete-subnet command", func() {
 		Expect(err).NotTo(HaveOccurred())
 		updated := &v1beta1.AdministrativeNetworkDomain{}
 		Expect(c.Get(context.Background(), client.ObjectKey{Name: "prod"}, updated)).To(Succeed())
-		Expect(updated.Spec.Subnets).To(BeEmpty())
+		Expect(updated.Spec.Subnets).To(HaveLen(1))
+		Expect(updated.Spec.Subnets[0].Name).To(Equal("app"))
 	})
 
 	It("prompts for confirmation and deletes when the user answers y", func() {
 		and := testAND("prod",
 			v1beta1.Subnet{Name: "web", CIDRs: []v1beta1.CIDR{"10.0.1.0/24"}, Type: v1beta1.SubnetTypePublic},
+			v1beta1.Subnet{Name: "app", CIDRs: []v1beta1.CIDR{"10.0.2.0/24"}, Type: v1beta1.SubnetTypePrivate},
 		)
 		var buf bytes.Buffer
 		cmd := newDeleteSubnetCommand(fakeClientFn(and))
