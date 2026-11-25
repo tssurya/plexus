@@ -51,7 +51,7 @@ OVN-Kubernetes backend):
 
 ```bash
 make build       # → bin/plexus-controller, bin/kubectl-plexus
-make test        # Unit tests
+make unit        # Run unit tests (downloads envtest binaries on first run; aliases: make test, make check)
 make lint        # Format + vet + golangci-lint
 make docker-build
 ```

@@ -10,7 +10,7 @@ import (
 	v1beta1 "github.com/ovn-kubernetes/plexus/api/administrativenetworkdomain/v1beta1"
 )
 
-func newCreateCommand() *cobra.Command {
+func newCreateCommand(clientFn ClientFactory) *cobra.Command {
 	return &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create an AdministrativeNetworkDomain",
@@ -20,9 +20,10 @@ Use 'plexus add-subnet' to add subnets after creation.
 Examples:
   plexus create production
   plexus create staging`,
-		Args: cobra.ExactArgs(1),
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := getClient()
+			c, err := clientFn()
 			if err != nil {
 				return err
 			}
